@@ -21,6 +21,7 @@ Internal design of S.H.I.T. in enough detail for a developer to understand, modi
 
 ## System Overview
 
+<!-- mermaid-source
 ```mermaid
 graph TB
     Browser["🌐 Browser<br/>any device on LAN"]
@@ -38,6 +39,9 @@ graph TB
     backend -- "pg queries" --> postgres
     backend -- "attachments / photos" --> uploads
 ```
+-->
+
+![arch system overview](diagrams/arch-system-overview.svg)
 
 ### Key design decisions
 
@@ -50,6 +54,7 @@ graph TB
 
 ## Request Lifecycle
 
+<!-- mermaid-source
 ```mermaid
 sequenceDiagram
     participant B as Browser
@@ -58,41 +63,48 @@ sequenceDiagram
     participant R as Route Handler
     participant DB as PostgreSQL
 
-    B->>N: GET /api/inventory<br/>Authorization: Bearer &lt;token&gt;
-    N->>M: proxy → backend:4000
-    M->>M: Verify JWT (type=access, not expired)
-    M->>DB: SELECT user — confirm active, not locked
+    B->>N: GET /api/inventory with Bearer token
+    N->>M: proxy to backend:4000
+    M->>M: Verify JWT signature and type=access
+    M->>DB: SELECT user, confirm active and not locked
     DB-->>M: user row
-    M->>R: req.user = { id, email, role }
+    M->>R: req.user attached with id, email, role
     R->>DB: parameterised SQL query
     DB-->>R: result rows
-    R-->>B: 200 JSON
+    R-->>B: 200 JSON response
 
-    note over B,M: Token expiry recovery (Axios interceptor)
+    note over B,M: Token expiry recovery via Axios interceptor
     B->>N: POST /api/auth/refresh
-    N->>M: verify refresh token + token family
-    M->>DB: rotate: invalidate old, insert new
+    N->>M: verify refresh token and token family
+    M->>DB: rotate tokens, invalidate old
     DB-->>M: ok
-    M-->>B: new accessToken + refreshToken
-    B->>N: Retry original request with new token
-    N-->>B: 200 JSON
+    M-->>B: new accessToken and refreshToken
+    B->>N: retry original request with new token
+    N-->>B: 200 JSON response
 ```
+-->
+
+![arch request lifecycle](diagrams/arch-request-lifecycle.svg)
 
 ### 2FA login flow
 
+<!-- mermaid-source
 ```mermaid
 sequenceDiagram
     participant B as Browser
     participant A as API
 
-    B->>A: POST /api/auth/login {email, password}
-    A-->>B: { requires_totp: true,<br/>totp_session: "&lt;2-min JWT&gt;" }
+    B->>A: POST /api/auth/login with email and password
+    A-->>B: requires_totp=true and totp_session JWT
     B->>B: Show TOTP input step
-    B->>A: POST /api/auth/totp/complete<br/>{totp_session, code}
-    A->>A: Verify TOTP code<br/>against stored secret
-    A-->>B: { accessToken, refreshToken, user }
-    B->>B: Store tokens → navigate to dashboard
+    B->>A: POST /api/auth/totp/complete with totp_session and code
+    A->>A: Verify TOTP code against stored secret
+    A-->>B: accessToken, refreshToken, user
+    B->>B: Store tokens, navigate to dashboard
 ```
+-->
+
+![arch 2fa login flow](diagrams/arch-2fa-login-flow.svg)
 
 ---
 
@@ -581,6 +593,7 @@ Queries: usage totals for last week + items below reorder threshold → calls `e
 
 `useNotifications.ts` runs inside `Layout.tsx` and polls every 30 seconds.
 
+<!-- mermaid-source
 ```mermaid
 flowchart TD
     P["Poll every 30 s"] --> R{User role}
@@ -596,6 +609,9 @@ flowchart TD
     T --> U["Advance lastSeen to now"]
     U --> P
 ```
+-->
+
+![arch notification system](diagrams/arch-notification-system.svg)
 
 The `since` query param filters `WHERE sr.created_at > $1` — only genuinely new records trigger notifications. The first poll after login is suppressed (initialisation guard) to avoid alerting on pre-existing items.
 
@@ -636,6 +652,7 @@ The app runs in `display: standalone` mode (no browser chrome) once installed.
 
 ### How it works
 
+<!-- mermaid-source
 ```mermaid
 flowchart TD
     A["App startup"] --> B["Connect to database"]
@@ -651,6 +668,9 @@ flowchart TD
     J --> F
     F -- done --> G
 ```
+-->
+
+![arch how it works](diagrams/arch-how-it-works.svg)
 
 ### Migration files
 
@@ -763,6 +783,7 @@ Returns all dispensing events where `inventory_items.is_controlled = true`, incl
 
 ## Purchase Order Workflow
 
+<!-- mermaid-source
 ```mermaid
 stateDiagram-v2
     [*] --> draft : POST /purchase-orders\n(PO-NNNNNN generated)
@@ -774,6 +795,9 @@ stateDiagram-v2
     draft --> cancelled : DELETE
     sent --> cancelled : DELETE
 ```
+-->
+
+![arch purchase order workflow](diagrams/arch-purchase-order-workflow.svg)
 
 | Step | Endpoint | Effect |
 |---|---|---|
@@ -930,6 +954,7 @@ When connectivity is restored, the service worker automatically replays the queu
 
 ### Priority chain
 
+<!-- mermaid-source
 ```mermaid
 flowchart TD
     A["DB value\n(admin_settings table, id=1)"] -->|"NULL?"| B["env var\n(SMTP_HOST, REPORT_TIMEZONE, etc.)"]
@@ -938,6 +963,9 @@ flowchart TD
     B -->|"has value"| V
     C --> V
 ```
+-->
+
+![arch priority chain](diagrams/arch-priority-chain.svg)
 
 This means:
 - A fresh install with only `JWT_SECRET` etc. in `.env` works immediately (all defaults apply)
@@ -979,6 +1007,7 @@ The backup cron is started by `startBackupJob()` and re-registered whenever back
 
 ### Workflow
 
+<!-- mermaid-source
 ```mermaid
 stateDiagram-v2
     [*] --> active : POST /recalls\n(emails admins, fires webhook)
@@ -987,6 +1016,9 @@ stateDiagram-v2
     quarantined --> closed : POST /close
     closed --> [*]
 ```
+-->
+
+![arch workflow](diagrams/arch-workflow.svg)
 
 ### Schema
 
@@ -1053,6 +1085,7 @@ One `LabelData` object per dispensed line item. A single fulfilment with 5 line 
 
 ### Workflow
 
+<!-- mermaid-source
 ```mermaid
 stateDiagram-v2
     [*] --> draft : POST /transfers
@@ -1060,6 +1093,9 @@ stateDiagram-v2
     in_transit --> received : POST /receive\n(adds destination stock)
     draft --> cancelled : DELETE
 ```
+-->
+
+![arch workflow 2](diagrams/arch-workflow-2.svg)
 
 **Dispatch** (`POST /api/transfers/:id/dispatch`):
 - Deducts `quantity_sent` from `inventory_items.quantity_on_hand` at the source

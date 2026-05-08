@@ -4,13 +4,15 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "screenshots": "node take-screenshots.mjs",
+    "diagrams": "node render-diagrams.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
+    "@mermaid-js/mermaid-cli": "^11.4.2",
     "puppeteer": "^24.43.0"
   }
 }

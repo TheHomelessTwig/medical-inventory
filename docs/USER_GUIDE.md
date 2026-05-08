@@ -17,6 +17,7 @@ Step-by-step instructions for every role. No technical knowledge required.
 
 ## Logging In
 
+<!-- mermaid-source
 ```mermaid
 flowchart TD
     A["Open browser\nhttp://&lt;server-address&gt;:3000"] --> B["Enter email + password"]
@@ -27,6 +28,9 @@ flowchart TD
     B -- "Wrong password\n(5× max)" --> F["🔒 Account locked\n15-minute cooldown"]
     F --> G["Wait — or ask admin\nto unlock"]
 ```
+-->
+
+![guide logging in](diagrams/guide-logging-in.svg)
 
 1. Open a browser on any device connected to the clinic network
 2. Go to `http://<server-address>:3000` (your admin will provide this)
@@ -425,6 +429,7 @@ Nurses can charge stock directly to you without a prior request (e.g., during a 
 
 ### Request Fulfilment Workflow
 
+<!-- mermaid-source
 ```mermaid
 flowchart LR
     A["🩺 Doctor submits order"] --> B["Nurse sees\nPending request"]
@@ -436,6 +441,9 @@ flowchart LR
     F --> H["🏷️ Print dispensing labels\n(Avery A4 sheet)"]
     F --> I["📧 Doctor notified\nautomatically"]
 ```
+-->
+
+![guide request fulfilment workflow](diagrams/guide-request-fulfilment-workflow.svg)
 
 ### Viewing Requests
 
@@ -523,6 +531,7 @@ See [Stocktake Workflow](#stocktake-workflow) below.
 
 ### Stocktake Workflow
 
+<!-- mermaid-source
 ```mermaid
 flowchart TD
     A["Stocktakes → New Stocktake\n(Full / Cycle / Partial)"] --> B["Print count sheet\n(A4 table with expected quantities)"]
@@ -535,6 +544,9 @@ flowchart TD
     G --> I["Export CSV\n(optional — for compliance records)"]
     H --> I
 ```
+-->
+
+![guide stocktake workflow](diagrams/guide-stocktake-workflow.svg)
 
 #### 1. Create the session
 

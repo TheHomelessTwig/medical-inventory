@@ -20,6 +20,7 @@ Everything you need to run S.H.I.T. in a clinic environment.
 
 ## Choosing a Deployment Method
 
+<!-- mermaid-source
 ```mermaid
 flowchart TD
     A([What OS is the server?]) --> B{OS}
@@ -32,6 +33,9 @@ flowchart TD
     E -- No --> F["🐳 Windows + Docker Desktop\nLow effort, good for devs"]
     E -- Yes --> G["⚙️ Windows + WSL2\nLighter footprint, no GUI"]
 ```
+-->
+
+![deploy choosing a deployment method](diagrams/deploy-choosing-a-deployment-method.svg)
 
 | Method | Best for | Effort |
 |---|---|---|

@@ -3,6 +3,7 @@
 
 A self-contained, open-source inventory management system built for small-to-medium medical practices. Runs entirely on your own hardware — no cloud accounts, no subscriptions, no external dependencies.
 
+<!-- mermaid-source
 ```mermaid
 graph LR
     Browser["🌐 Browser<br/>http://server-ip:3000"]
@@ -20,6 +21,9 @@ graph LR
     api -->|"pg queries"| db
     api -->|"files"| uploads
 ```
+-->
+
+![readme sam s helpful inventory tracker](docs/diagrams/readme-sam-s-helpful-inventory-tracker.svg)
 
 ---
 
