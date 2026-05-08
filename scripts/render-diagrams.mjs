@@ -170,9 +170,7 @@ for (const relPath of FILES) {
         { stdio: 'pipe' }
       );
 
-      const replacement =
-        `<!-- mermaid-source\n\`\`\`mermaid\n${b.source.trimEnd()}\n\`\`\`\n-->\n\n` +
-        `![${altText}](${svgRel})`;
+      const replacement = `![${altText}](${svgRel})`;
 
       replacements.push({ start: b.start, end: b.end, replacement });
       console.log(`  ✓ ${b.svgName}  [${type}${type === 'flowchart' || type === 'state' ? ' / elk' : ''}]`);

@@ -20,21 +20,6 @@ Everything you need to run S.H.I.T. in a clinic environment.
 
 ## Choosing a Deployment Method
 
-<!-- mermaid-source
-```mermaid
-flowchart TD
-    A([What OS is the server?]) --> B{OS}
-    B -- Windows --> C{IT comfort level?}
-    B -- Linux --> L["🐧 Linux — Native Docker\nCleanest for production"]
-    B -- macOS --> M["🍎 macOS + Docker Desktop\nDevelopment / Mac clinics"]
-
-    C -- "Low\n(clinic staff)" --> D["🪟 Windows Installer .exe\nDouble-click and done"]
-    C -- "Medium\n(developer)" --> E{Remove Docker\nDesktop GUI?}
-    E -- No --> F["🐳 Windows + Docker Desktop\nLow effort, good for devs"]
-    E -- Yes --> G["⚙️ Windows + WSL2\nLighter footprint, no GUI"]
-```
--->
-
 ![deploy choosing a deployment method](diagrams/deploy-choosing-a-deployment-method.svg)
 
 | Method | Best for | Effort |

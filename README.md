@@ -3,26 +3,6 @@
 
 A self-contained, open-source inventory management system built for small-to-medium medical practices. Runs entirely on your own hardware — no cloud accounts, no subscriptions, no external dependencies.
 
-<!-- mermaid-source
-```mermaid
-graph LR
-    Browser["🌐 Browser<br/>http://server-ip:3000"]
-
-    subgraph Docker["Docker (single machine)"]
-        direction LR
-        nginx["nginx<br/>(React SPA)"]
-        api["Express API<br/>(Node.js :4000)"]
-        db[("PostgreSQL 16<br/>named volume")]
-        uploads[("Uploads<br/>named volume")]
-    end
-
-    Browser -->|"port 3000"| nginx
-    nginx -->|"/api/* proxy"| api
-    api -->|"pg queries"| db
-    api -->|"files"| uploads
-```
--->
-
 ![readme sam s helpful inventory tracker](docs/diagrams/readme-sam-s-helpful-inventory-tracker.svg)
 
 ---
