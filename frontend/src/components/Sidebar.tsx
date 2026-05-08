@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, ClipboardList, Stethoscope,
   FileText, BarChart3, Users, Shield, X, LogOut, Settings,
   Activity, ShoppingCart, Sun, Moon, UserCircle, ArrowLeftRight,
-  Truck
+  Truck, ArrowRightLeft, AlertOctagon
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -26,8 +26,10 @@ const navItems: NavItem[] = [
   { to: '/requests',        label: 'Requests',        icon: <ClipboardList size={18} />,  roles: ['admin', 'doctor', 'nurse', 'practice_manager', 'locum_doctor'] },
   { to: '/stocktakes',      label: 'Stocktakes',      icon: <Activity size={18} />,       roles: ['admin', 'nurse', 'practice_manager'] },
   { to: '/returns',         label: 'Returns',         icon: <ArrowLeftRight size={18} />, roles: ['admin', 'nurse', 'practice_manager'] },
-  { to: '/purchase-orders', label: 'Purchase Orders', icon: <Truck size={18} />,          roles: ['admin', 'practice_manager'] },
-  { to: '/invoices',        label: 'Invoices',        icon: <FileText size={18} />,       roles: ['admin', 'practice_manager'] },
+  { to: '/purchase-orders', label: 'Purchase Orders', icon: <Truck size={18} />,            roles: ['admin', 'practice_manager'] },
+  { to: '/transfers',       label: 'Stock Transfers', icon: <ArrowRightLeft size={18} />,  roles: ['admin', 'nurse', 'practice_manager'] },
+  { to: '/recalls',         label: 'Recalls',         icon: <AlertOctagon size={18} />,    roles: ['admin', 'practice_manager'] },
+  { to: '/invoices',        label: 'Invoices',        icon: <FileText size={18} />,        roles: ['admin', 'practice_manager'] },
   { to: '/reports',         label: 'Reports',         icon: <BarChart3 size={18} />,      roles: ['admin', 'doctor', 'nurse', 'practice_manager', 'locum_doctor'] },
   { to: '/users',           label: 'Users',           icon: <Users size={18} />,          roles: ['admin', 'practice_manager'] },
   { to: '/audit',           label: 'Audit Log',       icon: <Shield size={18} />,         roles: ['admin', 'practice_manager'] },

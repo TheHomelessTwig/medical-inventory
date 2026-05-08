@@ -407,9 +407,20 @@ const RequestDetail: React.FC = () => {
                     by {f.nurse_name} • {format(parseISO(f.completed_at), 'dd MMM yyyy, HH:mm')}
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold text-emerald-700 text-lg">${Number(f.total_charge).toFixed(2)}</p>
-                  <p className="text-xs text-slate-400">Total charge</p>
+                <div className="flex items-start gap-3">
+                  <a
+                    href={`/api/labels/fulfillment/${f.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-secondary text-xs flex items-center gap-1.5 py-1.5"
+                    title="Print dispensing labels"
+                  >
+                    🏷️ Print Labels
+                  </a>
+                  <div className="text-right">
+                    <p className="font-bold text-emerald-700 text-lg">${Number(f.total_charge).toFixed(2)}</p>
+                    <p className="text-xs text-slate-400">Total charge</p>
+                  </div>
                 </div>
               </div>
               <table className="w-full text-sm">

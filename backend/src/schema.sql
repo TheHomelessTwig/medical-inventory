@@ -129,6 +129,9 @@ CREATE TABLE IF NOT EXISTS inventory_items (
   is_controlled          BOOLEAN NOT NULL DEFAULT false,
   controlled_schedule    VARCHAR(10),
   site_id                UUID REFERENCES sites(id) ON DELETE SET NULL,
+  auto_reorder           BOOLEAN NOT NULL DEFAULT false,
+  reorder_quantity       DECIMAL(10,3),
+  photo_attachment_id    UUID,   -- FK added after attachments table below
   notes                  TEXT,
   is_active              BOOLEAN DEFAULT true,
   created_by             UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -585,9 +588,137 @@ END;
 $$;
 
 -- ============================================================
+-- STOCK TRANSFERS BETWEEN SITES
+-- ============================================================
+CREATE TABLE IF NOT EXISTS stock_transfers (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transfer_number VARCHAR(50) UNIQUE NOT NULL,
+  from_site_id    UUID NOT NULL REFERENCES sites(id),
+  to_site_id      UUID NOT NULL REFERENCES sites(id),
+  status          VARCHAR(50) NOT NULL DEFAULT 'draft'
+                    CHECK (status IN ('draft','in_transit','received','cancelled')),
+  notes           TEXT,
+  created_by      UUID NOT NULL REFERENCES users(id),
+  dispatched_by   UUID REFERENCES users(id),
+  dispatched_at   TIMESTAMPTZ,
+  received_by     UUID REFERENCES users(id),
+  received_at     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS stock_transfer_items (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transfer_id       UUID NOT NULL REFERENCES stock_transfers(id) ON DELETE CASCADE,
+  inventory_item_id UUID NOT NULL REFERENCES inventory_items(id),
+  batch_id          UUID REFERENCES inventory_batches(id),
+  batch_number      VARCHAR(100),
+  quantity_sent     DECIMAL(10,3) NOT NULL,
+  quantity_received DECIMAL(10,3) DEFAULT 0,
+  notes             TEXT
+);
+CREATE SEQUENCE IF NOT EXISTS transfer_number_seq START 1000;
+CREATE INDEX IF NOT EXISTS idx_transfers_from   ON stock_transfers(from_site_id);
+CREATE INDEX IF NOT EXISTS idx_transfers_to     ON stock_transfers(to_site_id);
+CREATE INDEX IF NOT EXISTS idx_transfers_status ON stock_transfers(status);
+CREATE INDEX IF NOT EXISTS idx_transfer_items   ON stock_transfer_items(transfer_id);
+
+-- ============================================================
+-- RECALL MANAGEMENT
+-- ============================================================
+CREATE TABLE IF NOT EXISTS recalls (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  recall_number   VARCHAR(50) UNIQUE NOT NULL,
+  title           VARCHAR(255) NOT NULL,
+  description     TEXT,
+  supplier_id     UUID REFERENCES suppliers(id) ON DELETE SET NULL,
+  supplier_name   VARCHAR(255),
+  batch_numbers   TEXT[] NOT NULL DEFAULT '{}',
+  item_ids        UUID[] NOT NULL DEFAULT '{}',
+  severity        VARCHAR(20) NOT NULL DEFAULT 'moderate'
+                    CHECK (severity IN ('low','moderate','high','critical')),
+  status          VARCHAR(50) NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active','quarantined','disposed','closed')),
+  regulatory_ref  VARCHAR(255),
+  action_required TEXT,
+  created_by      UUID NOT NULL REFERENCES users(id),
+  closed_by       UUID REFERENCES users(id),
+  closed_at       TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE SEQUENCE IF NOT EXISTS recall_number_seq START 1000;
+CREATE INDEX IF NOT EXISTS idx_recalls_status  ON recalls(status);
+CREATE INDEX IF NOT EXISTS idx_recalls_created ON recalls(created_at DESC);
+
+-- ============================================================
+-- OUTBOUND WEBHOOKS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  url         TEXT NOT NULL,
+  events      TEXT[] NOT NULL DEFAULT '{}',
+  secret      VARCHAR(255) NOT NULL,
+  description VARCHAR(255),
+  is_active   BOOLEAN NOT NULL DEFAULT true,
+  created_by  UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  subscription_id UUID NOT NULL REFERENCES webhook_subscriptions(id) ON DELETE CASCADE,
+  event           VARCHAR(100) NOT NULL,
+  payload         JSONB NOT NULL,
+  status          VARCHAR(20) NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending','delivered','failed')),
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  last_attempt_at TIMESTAMPTZ,
+  response_code   INTEGER,
+  response_body   TEXT,
+  next_retry_at   TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_webhook_subs_active ON webhook_subscriptions(is_active);
+CREATE INDEX IF NOT EXISTS idx_webhook_del_pending ON webhook_deliveries(status, next_retry_at)
+  WHERE status IN ('pending','failed');
+CREATE INDEX IF NOT EXISTS idx_webhook_del_sub     ON webhook_deliveries(subscription_id);
+
+-- ============================================================
+-- STOCKTAKE SCHEDULES
+-- ============================================================
+CREATE TABLE IF NOT EXISTS stocktake_schedules (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name              VARCHAR(255) NOT NULL,
+  frequency         VARCHAR(20) NOT NULL
+                      CHECK (frequency IN ('weekly','monthly','quarterly')),
+  day_of_period     INTEGER NOT NULL DEFAULT 1,
+  stocktake_type    VARCHAR(20) NOT NULL DEFAULT 'full'
+                      CHECK (stocktake_type IN ('full','partial')),
+  scope_category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+  scope_location    VARCHAR(255),
+  notify_emails     TEXT[],
+  is_active         BOOLEAN NOT NULL DEFAULT true,
+  last_run_at       TIMESTAMPTZ,
+  next_due_at       TIMESTAMPTZ,
+  created_by        UUID NOT NULL REFERENCES users(id),
+  created_at        TIMESTAMPTZ DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_stocktake_schedules_active ON stocktake_schedules(is_active, next_due_at);
+
+-- photo_attachment_id FK (after attachments table exists)
+ALTER TABLE inventory_items
+  DROP CONSTRAINT IF EXISTS inventory_items_photo_attachment_id_fkey;
+ALTER TABLE inventory_items
+  ADD CONSTRAINT inventory_items_photo_attachment_id_fkey
+  FOREIGN KEY (photo_attachment_id) REFERENCES attachments(id) ON DELETE SET NULL;
+
+-- ============================================================
 -- SEQUENCES
 -- ============================================================
 CREATE SEQUENCE IF NOT EXISTS request_number_seq     START 1000;
 CREATE SEQUENCE IF NOT EXISTS fulfillment_number_seq START 1000;
 CREATE SEQUENCE IF NOT EXISTS return_number_seq      START 1000;
 CREATE SEQUENCE IF NOT EXISTS po_number_seq          START 1000;
+CREATE SEQUENCE IF NOT EXISTS transfer_number_seq    START 1000;
+CREATE SEQUENCE IF NOT EXISTS recall_number_seq      START 1000;

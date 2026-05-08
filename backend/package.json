@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@types/pdfkit": "^0.17.6",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
@@ -27,6 +28,7 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.7",
     "otplib": "^13.4.0",
+    "pdfkit": "^0.18.0",
     "pg": "^8.11.5",
     "qrcode": "^1.5.4",
     "uuid": "^9.0.1",

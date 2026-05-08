@@ -32,6 +32,8 @@ const itemSchema = z.object({
   is_controlled: z.boolean().default(false),
   controlled_schedule: z.string().max(10).optional().nullable(),
   site_id: z.string().uuid().optional().nullable(),
+  auto_reorder: z.boolean().default(false),
+  reorder_quantity: z.number().min(0).optional().nullable(),
   notes: z.string().optional().nullable(),
 });
 
@@ -284,8 +286,9 @@ router.post('/', requireAdmin, async (req: Request, res: Response, next: NextFun
         (name, description, category_id, sku, barcode, supplier_id, unit,
          reorder_threshold, internal_price, supplier_cost, gst_applicable, gst_rate,
          storage_location, requires_batch_tracking, dispense_unit,
-         is_controlled, controlled_schedule, site_id, notes, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+         is_controlled, controlled_schedule, site_id,
+         auto_reorder, reorder_quantity, notes, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
       RETURNING *
     `, [
       body.name, body.description, body.category_id, body.sku, body.barcode,
@@ -293,6 +296,7 @@ router.post('/', requireAdmin, async (req: Request, res: Response, next: NextFun
       body.supplier_cost, body.gst_applicable, body.gst_rate,
       body.storage_location, body.requires_batch_tracking, body.dispense_unit,
       body.is_controlled, body.controlled_schedule, body.site_id,
+      body.auto_reorder ?? false, body.reorder_quantity ?? null,
       body.notes, req.user!.id,
     ]);
 
@@ -350,8 +354,10 @@ router.put('/:id', requireAdmin, async (req: Request, res: Response, next: NextF
         is_active = COALESCE($17, is_active),
         is_controlled = COALESCE($18, is_controlled),
         controlled_schedule = $19,
-        site_id = $20
-      WHERE id = $21
+        site_id = $20,
+        auto_reorder = COALESCE($21, auto_reorder),
+        reorder_quantity = $22
+      WHERE id = $23
       RETURNING *
     `, [
       body.name, body.description, body.category_id ?? existing.rows[0].category_id,
@@ -366,6 +372,8 @@ router.put('/:id', requireAdmin, async (req: Request, res: Response, next: NextF
       body.is_controlled ?? existing.rows[0].is_controlled,
       body.controlled_schedule ?? existing.rows[0].controlled_schedule,
       body.site_id ?? existing.rows[0].site_id,
+      body.auto_reorder ?? existing.rows[0].auto_reorder,
+      body.reorder_quantity !== undefined ? body.reorder_quantity : existing.rows[0].reorder_quantity,
       req.params.id,
     ]);
 
@@ -570,6 +578,52 @@ router.patch('/bulk', requireAdmin, async (req: Request, res: Response, next: Ne
     if (err instanceof z.ZodError) { res.status(400).json({ error: 'Validation failed', details: err.errors }); return; }
     next(err);
   }
+});
+
+// POST /api/inventory/:id/photo — upload item photo (sets as primary photo)
+router.post('/:id/photo', requireAdmin, upload.single('photo'), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!req.file) { res.status(400).json({ error: 'No photo uploaded' }); return; }
+
+    const ALLOWED_IMG = ['image/jpeg','image/png','image/webp'];
+    if (!ALLOWED_IMG.includes(req.file.mimetype)) {
+      // Remove uploaded file
+      const fs = await import('fs');
+      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      res.status(400).json({ error: 'Only JPEG, PNG, and WebP images are accepted' }); return;
+    }
+
+    // Insert into attachments
+    const att = await query(`
+      INSERT INTO attachments (entity_type, entity_id, filename, stored_name, mime_type, size_bytes, uploaded_by)
+      VALUES ('inventory_item', $1, $2, $3, $4, $5, $6)
+      RETURNING id
+    `, [req.params.id, req.file.originalname, req.file.filename, req.file.mimetype, req.file.size, req.user!.id]);
+
+    // Set as primary photo on the item
+    await query(`UPDATE inventory_items SET photo_attachment_id = $1 WHERE id = $2`, [att.rows[0].id, req.params.id]);
+
+    res.json({ photo_attachment_id: att.rows[0].id, url: `/api/attachments/file/${att.rows[0].id}` });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/inventory/:id/photo — remove primary photo
+router.delete('/:id/photo', requireAdmin, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const item = await query('SELECT photo_attachment_id FROM inventory_items WHERE id=$1', [req.params.id]);
+    if (!item.rows[0]?.photo_attachment_id) { res.status(404).json({ error: 'No photo set' }); return; }
+    const attId = item.rows[0].photo_attachment_id;
+
+    await query('UPDATE inventory_items SET photo_attachment_id = NULL WHERE id=$1', [req.params.id]);
+    const att = await query('DELETE FROM attachments WHERE id=$1 RETURNING stored_name', [attId]);
+    if (att.rows[0]?.stored_name) {
+      const fs = await import('fs');
+      const path = await import('path');
+      const UPLOAD_DIR = process.env.UPLOAD_DIR || '/uploads';
+      try { fs.unlinkSync(path.join(UPLOAD_DIR, att.rows[0].stored_name)); } catch { /* ignore */ }
+    }
+    res.json({ message: 'Photo removed' });
+  } catch (err) { next(err); }
 });
 
 // GET /api/inventory/controlled-register

@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { stringify } from 'csv-stringify/sync';
 import { query } from '../db';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 router.use(authenticate);
@@ -434,6 +434,98 @@ router.get('/wastage', async (req: Request, res: Response, next: NextFunction): 
     }, {});
 
     res.json({ records: result.rows, summary, total_cost: Object.values(summary).reduce((a: number, b) => a + (b as number), 0) });
+  } catch (err) { next(err); }
+});
+
+// GET /api/reports/bas  — GST / BAS summary for Australian practices
+router.get('/bas', requireAdmin, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { from, to, format } = req.query as Record<string, string>;
+
+    const now = new Date();
+    const fyStart = now.getMonth() >= 6
+      ? `${now.getFullYear()}-07-01`
+      : `${now.getFullYear() - 1}-07-01`;
+    const fromDate = from || fyStart;
+    const toDate   = to   || now.toISOString().split('T')[0];
+
+    const purchases = await query(`
+      SELECT
+        SUM(CASE WHEN ii.gst_applicable THEN ii.total_cost - ii.gst_amount ELSE ii.total_cost END) AS subtotal,
+        SUM(CASE WHEN ii.gst_applicable THEN ii.gst_amount ELSE 0 END) AS gst_credits,
+        SUM(ii.total_cost) AS total_incl_gst,
+        COUNT(DISTINCT i.id) AS invoice_count
+      FROM invoice_items ii
+      JOIN invoices i ON ii.invoice_id = i.id
+      WHERE i.status = 'posted'
+        AND i.posted_at BETWEEN $1 AND ($2::date + INTERVAL '1 day')
+    `, [fromDate, toDate]);
+
+    const supplies = await query(`
+      SELECT
+        SUM(sfi.total_charge) AS total_charge,
+        SUM(CASE WHEN i.gst_applicable THEN sfi.total_charge / 1.1 ELSE sfi.total_charge END) AS excl_gst,
+        SUM(CASE WHEN i.gst_applicable THEN sfi.total_charge - sfi.total_charge / 1.1 ELSE 0 END) AS gst_collected
+      FROM stock_fulfillment_items sfi
+      JOIN inventory_items i     ON sfi.inventory_item_id = i.id
+      JOIN stock_fulfillments sf ON sfi.fulfillment_id = sf.id
+      WHERE sf.completed_at BETWEEN $1 AND ($2::date + INTERVAL '1 day')
+        AND sfi.total_charge IS NOT NULL AND sfi.total_charge > 0
+    `, [fromDate, toDate]);
+
+    const monthly = await query(`
+      SELECT
+        TO_CHAR(i.posted_at, 'YYYY-MM') AS month,
+        SUM(ii.total_cost)  AS purchases_incl_gst,
+        SUM(ii.gst_amount)  AS input_tax_credits
+      FROM invoice_items ii
+      JOIN invoices i ON ii.invoice_id = i.id
+      WHERE i.status = 'posted'
+        AND i.posted_at BETWEEN $1 AND ($2::date + INTERVAL '1 day')
+      GROUP BY TO_CHAR(i.posted_at, 'YYYY-MM')
+      ORDER BY month
+    `, [fromDate, toDate]);
+
+    const p = purchases.rows[0];
+    const s = supplies.rows[0];
+
+    const summary = {
+      period:           { from: fromDate, to: toDate },
+      purchases: {
+        total_incl_gst: parseFloat(p.total_incl_gst || '0'),
+        subtotal:       parseFloat(p.subtotal        || '0'),
+        gst_credits:    parseFloat(p.gst_credits     || '0'),
+        invoice_count:  parseInt(p.invoice_count     || '0'),
+      },
+      supplies: {
+        total_charge:   parseFloat(s.total_charge    || '0'),
+        excl_gst:       parseFloat(s.excl_gst        || '0'),
+        gst_collected:  parseFloat(s.gst_collected   || '0'),
+      },
+      net_gst_payable:  parseFloat(s.gst_collected || '0') - parseFloat(p.gst_credits || '0'),
+      monthly_breakdown: monthly.rows,
+    };
+
+    if (format === 'csv') {
+      const { stringify } = await import('csv-stringify/sync');
+      const rows = monthly.rows.map((m: Record<string, string>) => ({
+        month: m.month,
+        purchases_incl_gst: parseFloat(m.purchases_incl_gst || '0').toFixed(2),
+        input_tax_credits:  parseFloat(m.input_tax_credits  || '0').toFixed(2),
+      }));
+      rows.push({
+        month: 'TOTAL',
+        purchases_incl_gst: summary.purchases.total_incl_gst.toFixed(2),
+        input_tax_credits:  summary.purchases.gst_credits.toFixed(2),
+      });
+      const csv = stringify(rows, { header: true });
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="BAS_${fromDate}_to_${toDate}.csv"`);
+      res.send(csv);
+      return;
+    }
+
+    res.json(summary);
   } catch (err) { next(err); }
 });
 

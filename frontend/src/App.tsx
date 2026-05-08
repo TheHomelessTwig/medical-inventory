@@ -22,6 +22,8 @@ import DoctorOrder from './pages/DoctorOrder';
 import Profile from './pages/Profile';
 import Returns from './pages/Returns';
 import PurchaseOrders from './pages/PurchaseOrders';
+import StockTransfers from './pages/StockTransfers';
+import Recalls from './pages/Recalls';
 
 type Role =
   | 'admin' | 'doctor' | 'nurse'
@@ -120,6 +122,16 @@ function App() {
             <Route path="purchase-orders" element={
               <ProtectedRoute roles={FINANCE_ROLES}>
                 <ErrorBoundary context="Purchase Orders"><PurchaseOrders /></ErrorBoundary>
+              </ProtectedRoute>
+            } />
+            <Route path="transfers" element={
+              <ProtectedRoute roles={[...DISPENSE_ROLES, 'practice_manager']}>
+                <ErrorBoundary context="Stock Transfers"><StockTransfers /></ErrorBoundary>
+              </ProtectedRoute>
+            } />
+            <Route path="recalls" element={
+              <ProtectedRoute roles={FINANCE_ROLES}>
+                <ErrorBoundary context="Recalls"><Recalls /></ErrorBoundary>
               </ProtectedRoute>
             } />
             <Route path="reports" element={

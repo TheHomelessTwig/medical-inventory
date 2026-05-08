@@ -5,6 +5,8 @@ import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit, getClientInfo } from '../utils/audit';
 import { createError } from '../middleware/errorHandler';
 import { emailNewRequest, emailRequestFulfilled, emailQuickCharge } from '../utils/email';
+import { emitWebhookEvent } from '../utils/webhooks';
+import { checkAutoReorder } from '../utils/autoReorder';
 
 const router = Router();
 router.use(authenticate);
@@ -235,6 +237,13 @@ router.post('/', requireRole('doctor', 'admin'), async (req: Request, res: Respo
       });
     }
 
+    emitWebhookEvent('request.created', {
+      request_number: requestNumber,
+      doctor_id: req.user!.id,
+      priority: body.priority,
+      item_count: body.items.length,
+    }).catch(() => {});
+
     res.status(201).json(newRequest.rows[0]);
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -351,6 +360,9 @@ router.post('/:id/fulfill', requireRole('nurse', 'admin'), async (req: Request, 
           item.inventory_item_id, item.batch_id, req.user!.id,
           -item.quantity_used, `Fulfilled request ${reqResult.rows[0].request_number}`,
         ]);
+
+        // Auto-reorder check — create draft PO if stock hits threshold
+        await checkAutoReorder(client, item.inventory_item_id);
       }
 
       // Create fulfillment record

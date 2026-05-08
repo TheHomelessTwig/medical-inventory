@@ -30,6 +30,21 @@ async function main() {
       import('./jobs/retentionJob').then(({ startRetentionJob }) => {
         startRetentionJob();
       }).catch(console.error);
+
+      // Nightly expired-batch write-off (01:00)
+      import('./jobs/expiryWriteoff').then(({ startExpiryWriteoffJob }) => {
+        startExpiryWriteoffJob();
+      }).catch(console.error);
+
+      // Webhook retry queue (every 2 minutes)
+      import('./jobs/webhookRetry').then(({ startWebhookRetryJob }) => {
+        startWebhookRetryJob();
+      }).catch(console.error);
+
+      // Stocktake scheduler (daily 07:00)
+      import('./jobs/stocktakeScheduler').then(({ startStocktakeSchedulerJob }) => {
+        startStocktakeSchedulerJob();
+      }).catch(console.error);
     }
   });
 }
