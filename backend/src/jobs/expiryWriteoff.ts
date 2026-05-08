@@ -8,6 +8,7 @@
 
 import cron from 'node-cron';
 import { query, withTransaction } from '../db';
+import { getSettings } from '../services/settings';
 import { sendMail } from '../utils/email';
 import { emitWebhookEvent } from '../utils/webhooks';
 
@@ -115,8 +116,9 @@ export async function runExpiryWriteoff(): Promise<{ batches_written_off: number
   return { batches_written_off: expired.rows.length, total_qty: totalQty };
 }
 
-export function startExpiryWriteoffJob(): void {
-  const timezone = process.env.REPORT_TIMEZONE || 'UTC';
+export async function startExpiryWriteoffJob(): Promise<void> {
+  const settings = await getSettings();
+  const timezone = settings.report_timezone || 'UTC';
   cron.schedule('0 1 * * *', () => {
     console.log('[expiry-writeoff] Running nightly expiry write-off…');
     runExpiryWriteoff().catch(err => console.error('[expiry-writeoff] Failed:', err));

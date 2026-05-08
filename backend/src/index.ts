@@ -45,6 +45,11 @@ async function main() {
       import('./jobs/stocktakeScheduler').then(({ startStocktakeSchedulerJob }) => {
         startStocktakeSchedulerJob();
       }).catch(console.error);
+
+      // Built-in DB backup (schedule configured in admin settings)
+      import('./jobs/backupJob').then(({ startBackupJob }) => {
+        startBackupJob();
+      }).catch(console.error);
     }
   });
 }

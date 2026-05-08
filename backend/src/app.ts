@@ -22,6 +22,7 @@ import purchaseOrderRoutes      from './routes/purchaseOrders';
 import attachmentRoutes          from './routes/attachments';
 import siteRoutes                from './routes/sites';
 import retentionRoutes           from './routes/retention';
+import adminSettingsRoutes       from './routes/adminSettings';
 import transferRoutes            from './routes/transfers';
 import recallRoutes              from './routes/recalls';
 import webhookRoutes             from './routes/webhooks';
@@ -89,6 +90,7 @@ app.use('/api/recalls',            recallRoutes);
 app.use('/api/webhooks',           webhookRoutes);
 app.use('/api/labels',             labelRoutes);
 app.use('/api/stocktake-schedules', stocktakeScheduleRoutes);
+app.use('/api/admin-settings',      adminSettingsRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
 app.use(errorHandler);

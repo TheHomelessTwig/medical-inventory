@@ -605,68 +605,97 @@ Restart WSL: `wsl --shutdown` in PowerShell.
 
 ## Environment Variables
 
-All configuration in `.env`. Copy `.env.example` as a starting point.
+Most settings are now configurable from the **Settings** page in the app. Only infrastructure secrets that must exist before the database is reachable belong in `.env`.
 
-| Variable | Default | Description |
+Copy `.env.example` as a starting point. **Minimum required values:**
+
+```env
+DB_PASSWORD=choose_a_strong_password
+JWT_SECRET=at_least_32_random_characters
+JWT_REFRESH_SECRET=different_32_random_characters
+```
+
+**All `.env` variables:**
+
+| Variable | Default | Notes |
 |---|---|---|
 | `DB_NAME` | `medical_inventory` | PostgreSQL database name |
 | `DB_USER` | `medinv` | PostgreSQL user |
 | `DB_PASSWORD` | *(required)* | PostgreSQL password |
-| `JWT_SECRET` | *(required)* | Access token signing key (min 32 chars) |
-| `JWT_REFRESH_SECRET` | *(required)* | Refresh token key (different from JWT_SECRET) |
+| `JWT_SECRET` | *(required)* | Access token signing key — **never store in DB** |
+| `JWT_REFRESH_SECRET` | *(required)* | Refresh token key — **never store in DB** |
 | `JWT_EXPIRES_IN` | `15m` | Access token lifetime |
 | `JWT_REFRESH_EXPIRES_IN` | `30d` | Refresh token lifetime |
-| `NODE_ENV` | `production` | Set to `development` for verbose logging |
-| `CORS_ORIGIN` | `*` | Allowed CORS origin — `*` for LAN access |
-| `SESSION_TIMEOUT_MINUTES` | `30` | Idle minutes before auto-logout |
-| `MAX_LOGIN_ATTEMPTS` | `5` | Failed attempts before account lockout |
-| `LOCKOUT_MINUTES` | `15` | Lock duration |
-| `SMTP_HOST` | *(optional)* | SMTP server hostname — leave blank to disable email |
-| `SMTP_PORT` | `587` | SMTP port (587 for STARTTLS, 465 for SSL) |
-| `SMTP_USER` | *(optional)* | SMTP username / email address |
-| `SMTP_PASS` | *(optional)* | SMTP password |
-| `SMTP_FROM` | `S.H.I.T. <noreply@clinic.local>` | From address shown on emails |
-| `APP_URL` | `http://localhost:3000` | Base URL used in email links |
-| `REPORT_TIMEZONE` | `UTC` | Timezone for all scheduled jobs (IANA name, e.g. `Australia/Sydney`) |
-| `UPLOAD_DIR` | `/uploads` | File attachment storage path inside the container |
-| `BACKUP_DIR` | `/opt/medinv/backups` | Directory scanned by the weekly backup integrity check |
+| `NODE_ENV` | `production` | Set `development` for verbose logging |
+| `CORS_ORIGIN` | `*` | Restrict to `http://192.168.x.x:3000` for production |
+| `UPLOAD_DIR` | `/uploads` | File attachment storage path in container |
+| `SMTP_HOST` | — | *Fallback* — configure via Settings page instead |
+| `SMTP_PORT` | `587` | *Fallback* |
+| `SMTP_USER` | — | *Fallback* |
+| `SMTP_PASS` | — | *Fallback* |
+| `SMTP_FROM` | `noreply@clinic.local` | *Fallback* |
+| `APP_URL` | `http://localhost:3000` | *Fallback* |
+| `REPORT_TIMEZONE` | `UTC` | *Fallback* — configure via Settings → Timezone |
+| `MAX_LOGIN_ATTEMPTS` | `5` | *Fallback* — configure via Settings → Security |
+| `LOCKOUT_MINUTES` | `15` | *Fallback* — configure via Settings → Security |
+| `SESSION_TIMEOUT_MINUTES` | `30` | *Fallback* — configure via Settings → Security |
+| `BACKUP_DIR` | `/opt/medinv/backups` | *Fallback* — configure via Settings → Backup |
+
+> Settings-page values always take priority over env vars. Env vars serve as fallback defaults when the DB value is null (e.g. before first login).
 
 > **Never commit `.env` to version control.** It is excluded by `.gitignore`.
 
 ---
 
+## Admin Settings (UI Configuration)
+
+Most configuration is now done from **Settings** inside the app — no `.env` editing required after the initial setup. Only the secrets below must remain in `.env`.
+
+**Settings → Email (SMTP)**
+- SMTP host, port, TLS toggle, username, password, from address
+- App URL (used in email links)
+- **Send Test Email** button — verifies connectivity and sends a test to your account
+
+**Settings → Security**
+- Session idle timeout
+- Max failed login attempts before lockout
+- Lockout duration
+
+**Settings → Timezone**
+- IANA timezone for all scheduled jobs (weekly report, expiry alerts, backup, etc.)
+
+**Settings → Automatic Database Backup**
+- Enable/disable the built-in backup cron
+- Daily or weekly schedule (runs at 2:00 AM in the configured timezone)
+- Retention period (days to keep old backups)
+- Backup directory path
+
+**Run Backup Now** — triggers an immediate manual backup without waiting for the schedule.
+
+---
+
 ## Email Notifications Setup
+
+Email is configured entirely from the **Settings → Email (SMTP)** page — no `.env` editing needed.
 
 ### Gmail (App Password)
 
 1. Enable 2-Step Verification on your Google account
 2. Go to **Google Account → Security → App passwords**
 3. Generate an app password for "Mail"
-4. Add to `.env`:
-
-```env
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your@gmail.com
-SMTP_PASS=xxxx xxxx xxxx xxxx   # the 16-char app password
-SMTP_FROM=S.H.I.T. <your@gmail.com>
-APP_URL=http://192.168.1.100:3000
-```
+4. In S.H.I.T.: **Settings → Email → SMTP Host**: `smtp.gmail.com`, **Port**: `587`, **Username**: your Gmail address, **Password**: the 16-character app password
 
 ### Outlook / Microsoft 365
 
-```env
-SMTP_HOST=smtp.office365.com
-SMTP_PORT=587
-SMTP_USER=your@clinic.com
-SMTP_PASS=your_password
-```
+**Settings → Email**: host `smtp.office365.com`, port `587`, enter your Microsoft 365 credentials.
 
-### Weekly report timezone
+### After configuring
 
-```env
-REPORT_TIMEZONE=Australia/Sydney   # or America/New_York, Europe/London, etc.
-```
+Click **Send Test Email** to verify the settings immediately — a test message is sent to your account. You don't need to restart the application.
+
+### Timezone for scheduled jobs
+
+**Settings → Timezone** — enter an IANA timezone string.
 
 Scheduled jobs use the configured timezone:
 
@@ -729,11 +758,56 @@ http://192.168.1.100:3000
 
 ## Backup & Restore
 
-### Manual backup
+### Built-in backup (all platforms)
+
+Enable automatic backups from **Settings → Automatic Database Backup**:
+- Toggle **Enable automatic backups**
+- Choose **Daily** (2:00 AM) or **Weekly** (Sunday 2:00 AM)
+- Set retention period and backup directory
+- Click **Run Backup Now** for an immediate manual backup
+
+The backup job runs inside the Docker container and creates compressed `backup_YYYYMMDD_HHMM.sql.gz` files.
+
+### Windows — Task Scheduler backup
+
+For an additional backup from Windows (e.g. to a network share), use the included `backup.ps1`:
+
+```powershell
+# Manual run
+powershell -ExecutionPolicy Bypass -File backup.ps1
+
+# Schedule with Task Scheduler (PowerShell Admin):
+$action = New-ScheduledTaskAction `
+    -Execute "powershell.exe" `
+    -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File C:\MedInventory\backup.ps1 -BackupDir D:\NetworkShare\MedInvBackups"
+$trigger = New-ScheduledTaskTrigger -Daily -At "2:00AM"
+Register-ScheduledTask `
+    -TaskName "SHIT-Inventory-Backup" `
+    -Action $action -Trigger $trigger `
+    -Principal (New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest)
+```
+
+`backup.ps1` accepts `-BackupDir` and `-RetainDays` parameters. It prunes old backups automatically.
+
+### WSL2 — cron inside WSL
 
 ```bash
-docker exec medinv_postgres pg_dump -U medinv medical_inventory \
-  | gzip > backup_$(date +%Y%m%d).sql.gz
+# In WSL terminal: crontab -e
+0 2 * * * docker exec medinv_postgres pg_dump -U medinv medical_inventory \
+  | gzip > ~/medical-inventory/backups/daily_$(date +\%Y\%m\%d).sql.gz
+```
+
+Or use Windows Task Scheduler to trigger WSL at 2am:
+```powershell
+# Task Scheduler action:
+wsl -d Ubuntu -- bash -c "docker exec medinv_postgres pg_dump -U medinv medical_inventory | gzip > ~/medical-inventory/backups/daily_\$(date +%%Y%%m%%d).sql.gz"
+```
+
+### Linux — crontab
+
+```cron
+0 2 * * * docker exec medinv_postgres pg_dump -U medinv medical_inventory \
+  | gzip > /opt/medinv/backups/daily_$(date +\%Y\%m\%d).sql.gz
 ```
 
 ### Restore
@@ -741,13 +815,6 @@ docker exec medinv_postgres pg_dump -U medinv medical_inventory \
 ```bash
 gunzip -c backup_20260101.sql.gz \
   | docker exec -i medinv_postgres psql -U medinv medical_inventory
-```
-
-### Automated daily backups (Linux crontab)
-
-```cron
-0 2 * * * docker exec medinv_postgres pg_dump -U medinv medical_inventory \
-  | gzip > /opt/medinv/backups/daily_$(date +\%Y\%m\%d).sql.gz
 ```
 
 ---

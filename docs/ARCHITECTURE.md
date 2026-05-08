@@ -411,6 +411,18 @@ Items schema: `[{ inventory_item_id, item_name, quantity_requested, unit }]`
 | PUT | `/stocktake-schedules/:id` | Admin/Manager | Update schedule |
 | DELETE | `/stocktake-schedules/:id` | Admin/Manager | Delete schedule |
 
+### Admin Settings
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| GET | `/admin-settings` | Admin | Read all settings (smtp_pass redacted to `••••••••`) |
+| PUT | `/admin-settings` | Admin | Update one or more settings |
+| POST | `/admin-settings/test-email` | Admin | Send a test email to the requesting admin |
+| POST | `/admin-settings/backup-now` | Admin | Run an immediate manual backup |
+| GET | `/admin-settings/backups` | Admin | List existing backup files with sizes |
+
+Settings stored in `admin_settings` (single row, id=1). The service layer reads from DB and falls back to the matching env var when the column is NULL — so existing `.env` deployments work without a DB change.
+
 ### System
 
 | Method | Path | Role | Description |
@@ -879,6 +891,56 @@ The service worker uses Workbox Background Sync to queue POST mutations when off
 When connectivity is restored, the service worker automatically replays the queued requests in order. If a request fails after replay, it stays in the queue until the 24-hour TTL expires.
 
 **Note:** Queued mutations use the access token that was current when the request was made. If the token expires while offline (15-minute TTL), the replay will receive a 401 and fail. For extended offline use, a longer `JWT_EXPIRES_IN` value (e.g. `2h`) is recommended.
+
+---
+
+## Admin Settings Service
+
+`backend/src/services/settings.ts` provides `getSettings()` — called by email, auth, and all cron jobs.
+
+### Priority chain
+
+```
+DB value (admin_settings table, id=1)
+  ↓ if NULL
+env var (SMTP_HOST, REPORT_TIMEZONE, etc.)
+  ↓ if unset
+hardcoded default
+```
+
+This means:
+- A fresh install with only `JWT_SECRET` etc. in `.env` works immediately (all defaults apply)
+- Admins configure email, security, and timezone from the UI and the new values take effect on the next function call — no restart
+- `smtp_pass` is stored in plaintext (same risk level as `.env`); it is redacted to `••••••••` in API responses
+
+### Settings that are now DB-backed
+
+| Setting | DB column | Env var fallback |
+|---|---|---|
+| SMTP host | `smtp_host` | `SMTP_HOST` |
+| SMTP port | `smtp_port` | `SMTP_PORT` |
+| SMTP TLS | `smtp_secure` | `SMTP_SECURE` |
+| SMTP credentials | `smtp_user` / `smtp_pass` | `SMTP_USER` / `SMTP_PASS` |
+| From address | `smtp_from` | `SMTP_FROM` |
+| App URL (email links) | `app_url` | `APP_URL` |
+| Session timeout | `session_timeout_minutes` | `SESSION_TIMEOUT_MINUTES` |
+| Login max attempts | `max_login_attempts` | `MAX_LOGIN_ATTEMPTS` |
+| Lockout duration | `lockout_minutes` | `LOCKOUT_MINUTES` |
+| Scheduled job timezone | `report_timezone` | `REPORT_TIMEZONE` |
+| Backup enabled | `backup_enabled` | — |
+| Backup schedule | `backup_schedule` | — |
+| Backup retain days | `backup_retain_days` | — |
+| Backup directory | `backup_dir` | `BACKUP_DIR` |
+
+### Built-in backup job
+
+`backend/src/jobs/backupJob.ts` shells out to `pg_dump` inside the container:
+
+```bash
+PGPASSWORD="..." pg_dump -h postgres -U medinv medical_inventory | gzip > backup_YYYYMMDD_HHMM.sql.gz
+```
+
+The backup cron is started by `startBackupJob()` and re-registered whenever backup settings are saved from the admin UI. It uses the `report_timezone` setting for the 2:00 AM fire time.
 
 ---
 

@@ -388,6 +388,17 @@ launchctl load ~/Library/LaunchAgents/com.medinv.shit.plist
 
 For a clinic handling real patient data, consider these additional steps:
 
+### Configure email and other settings in the UI
+
+After first login, go to **Settings** to configure everything without touching `.env`:
+- **Email (SMTP)** — host, port, credentials, from address, test send button
+- **Security** — session timeout, lockout thresholds
+- **Timezone** — for all scheduled jobs (reports, alerts, backups)
+- **Automatic Backup** — enable, schedule, retention, directory
+- **Branding** — practice name and tagline shown on login
+
+Only `DB_PASSWORD`, `JWT_SECRET`, and `JWT_REFRESH_SECRET` must be set in `.env`. Everything else has an in-app equivalent.
+
 ### Change default credentials
 
 Immediately after first start:
@@ -450,7 +461,52 @@ CORS_ORIGIN=http://192.168.1.100:3000
 
 My Account → Security → Enable 2FA. Require this for all users with admin access.
 
-### Automated backups
+### Automatic backups (all platforms)
+
+The easiest option is to enable the **built-in backup** from **Settings → Automatic Database Backup**. No cron, no scripts — configure it once in the UI.
+
+For external backups (e.g. to a network share or offsite location), use the platform-specific methods below.
+
+### Windows — Task Scheduler backup
+
+Use the included `backup.ps1` (in the project root):
+
+```powershell
+# Register daily backup at 2am:
+$action = New-ScheduledTaskAction `
+    -Execute "powershell.exe" `
+    -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File C:\MedInventory\backup.ps1 -BackupDir C:\MedInventory\backups -RetainDays 30"
+$trigger = New-ScheduledTaskTrigger -Daily -At "2:00AM"
+Register-ScheduledTask `
+    -TaskName "SHIT-Inventory-Backup" `
+    -Action $action -Trigger $trigger `
+    -Principal (New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest) `
+    -Description "Daily database backup for S.H.I.T. Inventory"
+```
+
+`backup.ps1` parameters:
+- `-BackupDir` — where to save backups (default: `C:\MedInventory\backups`)
+- `-RetainDays` — how many days to keep (default: `30`)
+
+### WSL2 — cron inside WSL
+
+```bash
+# In WSL2 terminal (crontab -e):
+0 2 * * * docker exec medinv_postgres pg_dump -U medinv medical_inventory \
+  | gzip > ~/medical-inventory/backups/daily_$(date +\%Y\%m\%d).sql.gz
+
+# Prune backups older than 30 days
+0 3 * * * find ~/medical-inventory/backups -name "daily_*.sql.gz" -mtime +30 -delete
+```
+
+Alternatively, trigger from Windows Task Scheduler so it runs even if the WSL terminal is closed:
+
+```powershell
+# Task Scheduler action (add to the startup script):
+wsl -d Ubuntu -- bash -c "docker exec medinv_postgres pg_dump -U medinv medical_inventory | gzip > ~/medical-inventory/backups/daily_\$(date +%%Y%%m%%d).sql.gz"
+```
+
+### Linux — crontab
 
 ```cron
 # Daily at 2am — add to crontab with: crontab -e

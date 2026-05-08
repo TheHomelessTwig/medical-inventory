@@ -1,48 +1,63 @@
 /**
  * Email utility — wraps nodemailer.
- * Set SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / SMTP_FROM in .env
- * If SMTP_HOST is not set the functions are no-ops (emails skipped silently).
+ *
+ * SMTP config is read from the admin_settings DB table on every call,
+ * falling back to env vars (SMTP_HOST etc.) if not configured in the UI.
+ * If no host is configured the functions are no-ops (silently skipped).
  */
 
-import nodemailer, { Transporter } from 'nodemailer';
-
-let _transport: Transporter | null = null;
-
-function getTransport(): Transporter | null {
-  if (!process.env.SMTP_HOST) return null;
-  if (_transport) return _transport;
-
-  _transport = nodemailer.createTransport({
-    host:   process.env.SMTP_HOST,
-    port:   parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_PORT === '465',
-    auth:   process.env.SMTP_USER ? {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS || '',
-    } : undefined,
-    tls: { rejectUnauthorized: false },
-  });
-
-  return _transport;
-}
-
-const FROM = process.env.SMTP_FROM || 'S.H.I.T. <noreply@clinic.local>';
-const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+import nodemailer from 'nodemailer';
+import { getSettings } from '../services/settings';
 
 export async function sendMail(to: string | string[], subject: string, html: string): Promise<void> {
-  const transport = getTransport();
-  if (!transport) return; // SMTP not configured — skip silently
-
   try {
+    const s = await getSettings();
+    if (!s.smtp_host) return; // Email not configured — skip silently
+
+    const transport = nodemailer.createTransport({
+      host:   s.smtp_host,
+      port:   s.smtp_port,
+      secure: s.smtp_secure,
+      auth:   s.smtp_user ? { user: s.smtp_user, pass: s.smtp_pass || '' } : undefined,
+      tls:    { rejectUnauthorized: false },
+    });
+
     await transport.sendMail({
-      from: FROM,
-      to: Array.isArray(to) ? to.join(', ') : to,
+      from: s.smtp_from,
+      to:   Array.isArray(to) ? to.join(', ') : to,
       subject,
       html,
     });
   } catch (err) {
     // Email failures must not crash the API
     console.error('[email] Failed to send:', subject, err);
+  }
+}
+
+/** Verify SMTP connectivity — used by the settings test-email button. */
+export async function testEmail(to: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const s = await getSettings();
+    if (!s.smtp_host) return { ok: false, error: 'SMTP host is not configured.' };
+
+    const transport = nodemailer.createTransport({
+      host:   s.smtp_host,
+      port:   s.smtp_port,
+      secure: s.smtp_secure,
+      auth:   s.smtp_user ? { user: s.smtp_user, pass: s.smtp_pass || '' } : undefined,
+      tls:    { rejectUnauthorized: false },
+    });
+
+    await transport.verify();
+    await transport.sendMail({
+      from:    s.smtp_from,
+      to,
+      subject: 'S.H.I.T. — Test email',
+      html:    layout('Test Email', '<h2>Test successful!</h2><p>Your email settings are working correctly.</p>'),
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
   }
 }
 
@@ -81,6 +96,11 @@ function layout(title: string, body: string): string {
 </body>
 </html>`;
 }
+
+// ── App URL helper ─────────────────────────────────────────────────────────────
+// Synchronous for use in email template strings; reads env var directly.
+// The DB-stored app_url takes effect via the settings page on next send.
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
 // ── Typed notification functions ───────────────────────────────────────────────
 

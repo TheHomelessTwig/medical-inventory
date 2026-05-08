@@ -10,6 +10,7 @@
 
 import cron from 'node-cron';
 import { query, withTransaction } from '../db';
+import { getSettings } from '../services/settings';
 
 export interface RetentionSummary {
   audit_rows_archived:    number;
@@ -72,8 +73,9 @@ export async function runRetentionJob(): Promise<RetentionSummary> {
   return summary;
 }
 
-export function startRetentionJob(): void {
-  const timezone = process.env.REPORT_TIMEZONE || 'UTC';
+export async function startRetentionJob(): Promise<void> {
+  const settings = await getSettings();
+  const timezone = settings.report_timezone || 'UTC';
   // Nightly at 3am
   cron.schedule('0 3 * * *', () => {
     console.log('[retention] Running nightly retention job…');

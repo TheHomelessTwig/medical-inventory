@@ -19,6 +19,7 @@ import { query } from '../db';
 import { authenticate } from '../middleware/auth';
 import { logAudit, getClientInfo } from '../utils/audit';
 import { emailAccountLocked, emailAfterHoursLogin } from '../utils/email';
+import { getSettings } from '../services/settings';
 
 const router = Router();
 
@@ -72,9 +73,10 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction): P
       return;
     }
 
-    // Check account lock
-    const maxAttempts = parseInt(process.env.MAX_LOGIN_ATTEMPTS || '5');
-    const lockoutMinutes = parseInt(process.env.LOCKOUT_MINUTES || '15');
+    // Check account lock — read limits from DB settings (falls back to env)
+    const cfg = await getSettings();
+    const maxAttempts = cfg.max_login_attempts;
+    const lockoutMinutes = cfg.lockout_minutes;
 
     if (user.locked_until && new Date(user.locked_until) > new Date()) {
       const remaining = Math.ceil(

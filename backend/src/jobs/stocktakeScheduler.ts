@@ -6,6 +6,7 @@
 
 import cron from 'node-cron';
 import { query, withTransaction } from '../db';
+import { getSettings } from '../services/settings';
 import { sendMail } from '../utils/email';
 
 function addPeriod(date: Date, frequency: string): Date {
@@ -109,8 +110,9 @@ export async function runStocktakeScheduler(): Promise<void> {
   }
 }
 
-export function startStocktakeSchedulerJob(): void {
-  const timezone = process.env.REPORT_TIMEZONE || 'UTC';
+export async function startStocktakeSchedulerJob(): Promise<void> {
+  const settings = await getSettings();
+  const timezone = settings.report_timezone || 'UTC';
   cron.schedule('0 7 * * *', () => {
     console.log('[stocktake-scheduler] Checking due schedules…');
     runStocktakeScheduler().catch(err => console.error('[stocktake-scheduler] Error:', err));

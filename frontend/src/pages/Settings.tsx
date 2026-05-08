@@ -5,7 +5,7 @@ import {
   Tag, Truck, Plus, Edit2, Trash2, Save, X,
   Palette, Building2, Phone, Mail, MapPin,
   Server, Database, Clock, RefreshCw, Copy, Check,
-  Terminal, AlertTriangle, Wifi, Paintbrush
+  Terminal, AlertTriangle, Wifi, Paintbrush, Shield, Eye, EyeOff
 } from 'lucide-react';
 import { useTheme, ACCENT_PRESETS } from '../context/ThemeContext';
 import { api, getErrorMessage } from '../api/client';
@@ -779,6 +779,218 @@ const BrandingSection: React.FC = () => {
   );
 };
 
+// ─── Admin Settings (email, security, backup, timezone) ──────────────────────
+interface AdminSettings {
+  smtp_host: string | null;
+  smtp_port: number;
+  smtp_secure: boolean;
+  smtp_user: string | null;
+  smtp_pass: string | null;
+  smtp_from: string;
+  app_url: string;
+  session_timeout_minutes: number;
+  max_login_attempts: number;
+  lockout_minutes: number;
+  report_timezone: string;
+  backup_enabled: boolean;
+  backup_schedule: 'daily' | 'weekly';
+  backup_retain_days: number;
+  backup_dir: string;
+}
+
+const AdminSettingsSection: React.FC = () => {
+  const qc = useQueryClient();
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [runningBackup, setRunningBackup] = useState(false);
+  const [showPass, setShowPass] = useState(false);
+  const { register, handleSubmit, reset, watch, formState: { isDirty } } = useForm<AdminSettings>();
+
+  const { data: settings, isLoading } = useQuery<AdminSettings>({
+    queryKey: ['admin-settings'],
+    queryFn: async () => (await api.get('/admin-settings')).data,
+  });
+
+  React.useEffect(() => { if (settings) reset(settings); }, [settings, reset]);
+
+  const saveMutation = useMutation({
+    mutationFn: (data: AdminSettings) => api.put('/admin-settings', data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-settings'] }); toast.success('Settings saved'); },
+    onError: (e: unknown) => toast.error(getErrorMessage(e)),
+  });
+
+  const handleTestEmail = async () => {
+    setTestingEmail(true); setTestEmailResult(null);
+    try {
+      const res = await api.post('/admin-settings/test-email', {});
+      setTestEmailResult(res.data);
+    } catch (e) {
+      setTestEmailResult({ ok: false, error: getErrorMessage(e) });
+    } finally { setTestingEmail(false); }
+  };
+
+  const handleBackupNow = async () => {
+    setRunningBackup(true);
+    try {
+      const res = await api.post('/admin-settings/backup-now', {});
+      toast.success(`Backup created: ${(res.data as { file: string }).file}`);
+    } catch (e) {
+      toast.error(`Backup failed: ${getErrorMessage(e)}`);
+    } finally { setRunningBackup(false); }
+  };
+
+  if (isLoading) return null;
+
+  const backupEnabled = watch('backup_enabled');
+
+  const SectionCard: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
+    <div className="card overflow-hidden">
+      <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2">
+        <span className="text-slate-400">{icon}</span>
+        <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-sm">{title}</h3>
+      </div>
+      <div className="p-5">{children}</div>
+    </div>
+  );
+
+  return (
+    <form onSubmit={handleSubmit(d => saveMutation.mutate(d))} className="space-y-4">
+      {/* Email / SMTP */}
+      <SectionCard title="Email (SMTP)" icon={<Mail size={15} />}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2">
+            <label className="label">SMTP Host <span className="font-normal text-slate-400">(leave blank to disable email)</span></label>
+            <input {...register('smtp_host')} className="input" placeholder="smtp.gmail.com" />
+          </div>
+          <div>
+            <label className="label">Port</label>
+            <input type="number" {...register('smtp_port', { valueAsNumber: true })} className="input" placeholder="587" />
+          </div>
+          <div className="flex items-center gap-2 mt-5">
+            <input type="checkbox" id="smtp_secure" {...register('smtp_secure')} className="rounded" />
+            <label htmlFor="smtp_secure" className="text-sm text-slate-700 dark:text-slate-300">TLS/SSL (port 465)</label>
+          </div>
+          <div>
+            <label className="label">Username</label>
+            <input {...register('smtp_user')} className="input" placeholder="your@email.com" />
+          </div>
+          <div>
+            <label className="label">Password</label>
+            <div className="relative">
+              <input
+                {...register('smtp_pass')}
+                type={showPass ? 'text' : 'password'}
+                className="input pr-10"
+                placeholder="App password or SMTP password"
+              />
+              <button type="button" onClick={() => setShowPass(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="label">From Address</label>
+            <input {...register('smtp_from')} className="input" placeholder="S.H.I.T. <noreply@clinic.com>" />
+          </div>
+          <div>
+            <label className="label">App URL <span className="font-normal text-slate-400">(used in email links)</span></label>
+            <input {...register('app_url')} className="input" placeholder="http://192.168.1.100:3000" />
+          </div>
+        </div>
+        <div className="mt-4 flex items-center gap-3">
+          <button type="button" onClick={handleTestEmail} disabled={testingEmail} className="btn-secondary text-sm flex items-center gap-1.5">
+            <Mail size={13} />{testingEmail ? 'Sending…' : 'Send Test Email'}
+          </button>
+          {testEmailResult && (
+            <span className={`text-sm ${testEmailResult.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              {testEmailResult.ok ? '✓ Email sent successfully' : `✗ ${testEmailResult.error}`}
+            </span>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* Security */}
+      <SectionCard title="Security" icon={<Shield size={15} />}>
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="label">Session timeout <span className="font-normal text-slate-400">(minutes)</span></label>
+            <input type="number" min="5" max="480" {...register('session_timeout_minutes', { valueAsNumber: true })} className="input" />
+          </div>
+          <div>
+            <label className="label">Max login attempts</label>
+            <input type="number" min="1" max="20" {...register('max_login_attempts', { valueAsNumber: true })} className="input" />
+          </div>
+          <div>
+            <label className="label">Lockout duration <span className="font-normal text-slate-400">(minutes)</span></label>
+            <input type="number" min="1" max="60" {...register('lockout_minutes', { valueAsNumber: true })} className="input" />
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* Scheduled jobs timezone */}
+      <SectionCard title="Timezone" icon={<Clock size={15} />}>
+        <div className="max-w-xs">
+          <label className="label">IANA timezone for all scheduled jobs</label>
+          <input {...register('report_timezone')} className="input" placeholder="Australia/Sydney" />
+          <p className="text-xs text-slate-400 mt-1">
+            Examples: <code>UTC</code>, <code>Australia/Sydney</code>, <code>America/New_York</code>, <code>Europe/London</code>
+          </p>
+        </div>
+      </SectionCard>
+
+      {/* Backup */}
+      <SectionCard title="Automatic Database Backup" icon={<Database size={15} />}>
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="backup_enabled" {...register('backup_enabled')} className="rounded" />
+            <label htmlFor="backup_enabled" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              Enable automatic backups
+            </label>
+          </div>
+          {backupEnabled && (
+            <div className="grid grid-cols-2 gap-4 pl-6">
+              <div>
+                <label className="label">Schedule</label>
+                <select {...register('backup_schedule')} className="input">
+                  <option value="daily">Daily (2:00 AM)</option>
+                  <option value="weekly">Weekly (Sunday 2:00 AM)</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Keep backups for <span className="font-normal text-slate-400">(days)</span></label>
+                <input type="number" min="1" max="3650" {...register('backup_retain_days', { valueAsNumber: true })} className="input" />
+              </div>
+              <div className="col-span-2">
+                <label className="label">Backup directory</label>
+                <input {...register('backup_dir')} className="input" placeholder="/opt/medinv/backups" />
+                <p className="text-xs text-slate-400 mt-1">
+                  Linux/macOS: absolute path on the server. Windows: configure via Task Scheduler (see Deployment Guide).
+                </p>
+              </div>
+            </div>
+          )}
+          <div className="flex items-center gap-3 pt-1">
+            <button type="button" onClick={handleBackupNow} disabled={runningBackup} className="btn-secondary text-sm flex items-center gap-1.5">
+              <Database size={13} />{runningBackup ? 'Backing up…' : 'Run Backup Now'}
+            </button>
+            <span className="text-xs text-slate-400">Creates a compressed pg_dump immediately.</span>
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* Save bar */}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={() => reset(settings ?? undefined)} disabled={!isDirty} className="btn-secondary text-sm">
+          Reset
+        </button>
+        <button type="submit" disabled={saveMutation.isPending || !isDirty} className="btn-primary text-sm flex items-center gap-2">
+          <Save size={13} />{saveMutation.isPending ? 'Saving…' : 'Save all changes'}
+        </button>
+      </div>
+    </form>
+  );
+};
+
 // ─── Main Settings page ───────────────────────────────────────────────────────
 const Settings: React.FC = () => {
   const { user } = useAuth();
@@ -795,6 +1007,7 @@ const Settings: React.FC = () => {
 
       <SystemInfo />
 
+      {isAdmin && <AdminSettingsSection />}
       {isAdmin && <BrandingSection />}
       {isAdmin && <UpdateGuide />}
       {isAdmin && <ClinicTheme />}

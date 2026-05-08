@@ -78,11 +78,56 @@ Users → find user → **Reset Password** → set a temporary password → the 
 
 ### Setting Up Email Notifications
 
-Add SMTP credentials to the `.env` file (see the [Email Notifications Setup](../README.md#email-notifications-setup) section in the README). Once configured, the system automatically sends:
+Configure email directly from **Settings → Email (SMTP)** — no file editing required:
+
+1. Go to **Settings → Email (SMTP)**
+2. Enter your SMTP host, port, username, and password
+3. Set the **From Address** (e.g. `S.H.I.T. <noreply@yourclinic.com>`)
+4. Set the **App URL** to your server's address (used in email links, e.g. `http://192.168.1.100:3000`)
+5. Click **Save all changes**
+6. Click **Send Test Email** to verify — a test message is sent to your account immediately
+
+**Common provider settings:**
+| Provider | Host | Port |
+|---|---|---|
+| Gmail (App Password) | `smtp.gmail.com` | `587` |
+| Outlook / Microsoft 365 | `smtp.office365.com` | `587` |
+| SendGrid | `smtp.sendgrid.net` | `587` |
+
+Once configured, the system automatically sends:
 - New request notifications to nurses
 - Fulfilment receipts to doctors
 - Account lockout and after-hours login alerts to admins
 - Weekly usage + low stock reports every Monday 8am
+- Expiry alerts for batches nearing their use-by date
+- Recall notifications to admins
+- Backup success/failure notifications (if backup enabled)
+
+### Configuring Security Settings
+
+**Settings → Security** — adjust without restarting the server:
+- **Session timeout** — how many idle minutes before automatic sign-out (default: 30)
+- **Max login attempts** — failed logins before account lockout (default: 5)
+- **Lockout duration** — how long accounts stay locked in minutes (default: 15)
+
+### Setting the Timezone
+
+**Settings → Timezone** — enter an IANA timezone string (e.g. `Australia/Sydney`, `America/New_York`, `Europe/London`).
+
+This controls the time at which all scheduled jobs fire: weekly reports, expiry alerts, backup, retention, and stocktake creation.
+
+### Automatic Database Backups
+
+**Settings → Automatic Database Backup:**
+1. Toggle **Enable automatic backups**
+2. Choose **Daily** (runs at 2:00 AM) or **Weekly** (runs Sunday at 2:00 AM)
+3. Enter how many days to keep old backups
+4. Enter the backup directory path (Linux: `/opt/medinv/backups`; WSL: `~/medical-inventory/backups`)
+5. Click **Save all changes**
+
+Click **Run Backup Now** at any time to create an immediate manual backup. The file list below the button shows existing backups with sizes.
+
+**Windows users:** Use the included `backup.ps1` script with Task Scheduler for an additional off-machine copy — see the Deployment Guide.
 
 ### Managing Categories and Suppliers
 

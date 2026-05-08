@@ -10,6 +10,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { query } from '../db';
 import { emailWeeklyReport, sendMail } from '../utils/email';
+import { getSettings } from '../services/settings';
 
 const execAsync = promisify(exec);
 
@@ -248,8 +249,9 @@ async function runBackupIntegrityCheck() {
 
 // ─── scheduler entry point ─────────────────────────────────────────────────
 
-export function startScheduledReports() {
-  const timezone = process.env.REPORT_TIMEZONE || 'UTC';
+export async function startScheduledReports() {
+  const settings = await getSettings();
+  const timezone = settings.report_timezone || 'UTC';
 
   // Weekly usage report — Monday 08:00
   cron.schedule('0 8 * * 1', () => {
