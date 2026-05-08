@@ -3,18 +3,22 @@
 
 A self-contained, open-source inventory management system built for small-to-medium medical practices. Runs entirely on your own hardware — no cloud accounts, no subscriptions, no external dependencies.
 
-```
-┌─────────────────────────────────────────────────────┐
-│  Browser  →  http://[server-ip]:3000                │
-│                                                     │
-│  ┌──────────┐    ┌──────────┐    ┌──────────────┐  │
-│  │  React   │    │ Express  │    │  PostgreSQL  │  │
-│  │ Frontend │───▶│  API     │───▶│  Database    │  │
-│  │  (nginx) │    │ (Node)   │    │              │  │
-│  └──────────┘    └──────────┘    └──────────────┘  │
-│                                                     │
-│  All three run as Docker containers on one machine  │
-└─────────────────────────────────────────────────────┘
+```mermaid
+graph LR
+    Browser["🌐 Browser<br/>http://server-ip:3000"]
+
+    subgraph Docker["Docker (single machine)"]
+        direction LR
+        nginx["nginx<br/>(React SPA)"]
+        api["Express API<br/>(Node.js :4000)"]
+        db[("PostgreSQL 16<br/>named volume")]
+        uploads[("Uploads<br/>named volume")]
+    end
+
+    Browser -->|"port 3000"| nginx
+    nginx -->|"/api/* proxy"| api
+    api -->|"pg queries"| db
+    api -->|"files"| uploads
 ```
 
 ---
@@ -44,31 +48,55 @@ A self-contained, open-source inventory management system built for small-to-med
 ## Screenshots
 
 ### Login
-![Login page showing S.H.I.T. branding](docs/screenshots/login.png)
+![Login page showing S.H.I.T. branding with demo account credentials](docs/screenshots/login.png)
+
+### Dashboard
+![Dashboard with KPI cards, low-stock alert, and recent activity feed](docs/screenshots/dashboard.png)
 
 ### Dashboard (Dark Mode)
-![Dashboard in dark mode with KPI cards and activity feed](docs/screenshots/dashboard-dark.png)
+![Dashboard in dark mode with KPI cards and stock value charts](docs/screenshots/dashboard-dark.png)
 
 ### Inventory
-![Inventory list with item cards, search and filters](docs/screenshots/inventory.png)
+![Inventory list showing items, categories, on-hand quantities, prices and expiry status](docs/screenshots/inventory.png)
 
 ### Doctor — New Order (POS Screen)
-![Doctor POS-style order screen with item grid and basket](docs/screenshots/doctor-order.png)
+![Doctor POS-style order screen with item grid, category pills, basket, and priority selector](docs/screenshots/doctor-order.png)
 
 ### Nurse — Quick Charge (POS Screen)
-![Nurse quick charge screen with category filter pills and checkout panel](docs/screenshots/quick-charge.png)
+![Nurse quick charge screen with item grid, internal prices, doctor selector, and basket](docs/screenshots/quick-charge.png)
 
-### Requests
-![Stock requests list with status badges and priority sorting](docs/screenshots/requests.png)
+### Requests (Admin view)
+![Stock requests list with status badges, priority sorting, and fulfilment actions](docs/screenshots/requests.png)
 
-### Reports
-![Usage reports with date range filter and charts](docs/screenshots/reports.png)
+### Requests (Nurse view)
+![Nurse requests view showing pending requests sorted by priority with accept and fulfil buttons](docs/screenshots/requests-nurse.png)
+
+### Reports — Overview
+![Reports overview with stock value KPIs, low-stock list, and category pie chart](docs/screenshots/reports.png)
+
+### Returns to Supplier
+![Supplier returns list with draft/confirmed status badges](docs/screenshots/returns.png)
+
+### Stocktakes
+![Stocktake sessions list with progress indicators](docs/screenshots/stocktakes.png)
+
+### Invoices
+![Supplier invoice list with posted/unposted status](docs/screenshots/invoices.png)
+
+### Users (Admin)
+![User management with role badges and action buttons](docs/screenshots/users.png)
+
+### Audit Log
+![Immutable audit log with user, action, timestamp, and before/after values](docs/screenshots/audit-log.png)
 
 ### My Account (Profile)
-![User profile page with dark mode toggle and accent colour picker](docs/screenshots/profile.png)
+![User profile page with 2FA setup, dark mode toggle, and accent colour picker](docs/screenshots/profile.png)
 
 ### Settings (Admin)
-![Admin settings with clinic theme colour picker and system info](docs/screenshots/settings.png)
+![Admin settings showing system info, email SMTP config, security thresholds, and backup controls](docs/screenshots/settings.png)
+
+### Settings — Email Configuration
+![Email SMTP settings panel with host, port, credentials, from address, app URL, and test send button](docs/screenshots/settings-email.png)
 
 ---
 

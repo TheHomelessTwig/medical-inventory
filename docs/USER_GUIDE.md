@@ -17,6 +17,17 @@ Step-by-step instructions for every role. No technical knowledge required.
 
 ## Logging In
 
+```mermaid
+flowchart TD
+    A["Open browser\nhttp://&lt;server-address&gt;:3000"] --> B["Enter email + password"]
+    B --> C{2FA enabled\non your account?}
+    C -- No --> D["✅ Logged in"]
+    C -- Yes --> E["Enter 6-digit code\nfrom authenticator app"]
+    E --> D
+    B -- "Wrong password\n(5× max)" --> F["🔒 Account locked\n15-minute cooldown"]
+    F --> G["Wait — or ask admin\nto unlock"]
+```
+
 1. Open a browser on any device connected to the clinic network
 2. Go to `http://<server-address>:3000` (your admin will provide this)
 3. Enter your email and password
@@ -412,6 +423,20 @@ Nurses can charge stock directly to you without a prior request (e.g., during a 
 
 ## Guide for Nurses
 
+### Request Fulfilment Workflow
+
+```mermaid
+flowchart LR
+    A["🩺 Doctor submits order"] --> B["Nurse sees\nPending request"]
+    B --> C["Click Accept\n(claimed — others see it's being handled)"]
+    C --> D["Gather items\nfrom shelf/fridge"]
+    D --> E["Click Fulfil\n(confirm quantities + batches)"]
+    E --> F["Complete Fulfilment"]
+    F --> G["📋 Copy clinical note\n(paste into EMR)"]
+    F --> H["🏷️ Print dispensing labels\n(Avery A4 sheet)"]
+    F --> I["📧 Doctor notified\nautomatically"]
+```
+
 ### Viewing Requests
 
 Go to **Requests** — new requests from doctors appear at the top, sorted by priority (Urgent first).
@@ -497,6 +522,19 @@ See [Stocktake Workflow](#stocktake-workflow) below.
 ## Common Tasks (All Roles)
 
 ### Stocktake Workflow
+
+```mermaid
+flowchart TD
+    A["Stocktakes → New Stocktake\n(Full / Cycle / Partial)"] --> B["Print count sheet\n(A4 table with expected quantities)"]
+    B --> C["Physical count\n(walk the clinic, write actual counts)"]
+    C --> D["Enter counts in app\n(variance column updates live)"]
+    D --> E["Click Complete"]
+    E --> F{Apply variances\nas stock adjustments?}
+    F -- Yes --> G["Stock levels updated\n+ audit records created"]
+    F -- No --> H["Results saved\nfor reference only"]
+    G --> I["Export CSV\n(optional — for compliance records)"]
+    H --> I
+```
 
 #### 1. Create the session
 

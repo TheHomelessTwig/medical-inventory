@@ -21,24 +21,22 @@ Internal design of S.H.I.T. in enough detail for a developer to understand, modi
 
 ## System Overview
 
-```
-                    ┌──────────────────────────────────────────────┐
-                    │                Docker Network                 │
-                    │                                              │
- Browser ──port 3000──▶ ┌──────────┐                              │
-                    │   │  nginx   │                              │
-                    │   │ (Alpine) │                              │
-                    │   └────┬─────┘                              │
-                    │        │ /api/*  → backend:4000             │
-                    │        │ /*      → /usr/share/nginx/html    │
-                    │        ▼                                     │
-                    │   ┌──────────┐      ┌──────────────────┐   │
-                    │   │  Node.js │      │   PostgreSQL 16   │   │
-                    │   │  Express │─────▶│   medinv_postgres │   │
-                    │   │  :4000   │      │   (named volume)  │   │
-                    │   └──────────┘      └──────────────────┘   │
-                    │                                              │
-                    └──────────────────────────────────────────────┘
+```mermaid
+graph TB
+    Browser["🌐 Browser<br/>any device on LAN"]
+
+    subgraph Docker["Docker Network (single host)"]
+        nginx["nginx :80<br/>React SPA + proxy"]
+        backend["Node.js Express :4000<br/>REST API + cron jobs"]
+        postgres[("PostgreSQL 16<br/>postgres_data volume")]
+        uploads[("File store<br/>uploads_data volume")]
+    end
+
+    Browser -- "HTTP :3000" --> nginx
+    nginx -- "GET /* → SPA" --> nginx
+    nginx -- "/api/* proxy" --> backend
+    backend -- "pg queries" --> postgres
+    backend -- "attachments / photos" --> uploads
 ```
 
 ### Key design decisions
@@ -52,44 +50,48 @@ Internal design of S.H.I.T. in enough detail for a developer to understand, modi
 
 ## Request Lifecycle
 
-```
-1. Browser: GET /api/inventory
-   Authorization: Bearer <access_token>
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant N as nginx :3000
+    participant M as authenticate()
+    participant R as Route Handler
+    participant DB as PostgreSQL
 
-2. nginx → proxies to backend:4000/api/inventory
+    B->>N: GET /api/inventory<br/>Authorization: Bearer &lt;token&gt;
+    N->>M: proxy → backend:4000
+    M->>M: Verify JWT (type=access, not expired)
+    M->>DB: SELECT user — confirm active, not locked
+    DB-->>M: user row
+    M->>R: req.user = { id, email, role }
+    R->>DB: parameterised SQL query
+    DB-->>R: result rows
+    R-->>B: 200 JSON
 
-3. Express → authenticate middleware:
-   a. Reads Authorization header
-   b. Verifies JWT against JWT_SECRET
-   c. Checks token type === 'access'
-   d. Queries users table: confirms active, not locked
-   e. Attaches req.user = { id, email, name, role }
-
-4. Route handler:
-   a. Reads query params
-   b. Builds parameterised SQL
-   c. Executes queries
-   d. Returns JSON
-
-5. If access token is expired (401):
-   a. Axios interceptor catches 401
-   b. Sends POST /api/auth/refresh
-   c. Issues new access + refresh tokens
-   d. Retries original request with new token
-   e. If refresh also fails → logout + /login
+    note over B,M: Token expiry recovery (Axios interceptor)
+    B->>N: POST /api/auth/refresh
+    N->>M: verify refresh token + token family
+    M->>DB: rotate: invalidate old, insert new
+    DB-->>M: ok
+    M-->>B: new accessToken + refreshToken
+    B->>N: Retry original request with new token
+    N-->>B: 200 JSON
 ```
 
 ### 2FA login flow
 
-```
-1. POST /api/auth/login  → credentials valid + totp_enabled=true
-   → Returns { requires_totp: true, totp_session: "<2-min JWT>" }
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant A as API
 
-2. Browser shows TOTP input step
-
-3. POST /api/auth/totp/complete { totp_session, code }
-   → Verifies TOTP code against stored secret
-   → Returns full { accessToken, refreshToken, user }
+    B->>A: POST /api/auth/login {email, password}
+    A-->>B: { requires_totp: true,<br/>totp_session: "&lt;2-min JWT&gt;" }
+    B->>B: Show TOTP input step
+    B->>A: POST /api/auth/totp/complete<br/>{totp_session, code}
+    A->>A: Verify TOTP code<br/>against stored secret
+    A-->>B: { accessToken, refreshToken, user }
+    B->>B: Store tokens → navigate to dashboard
 ```
 
 ---
@@ -529,16 +531,21 @@ Returns use the same pattern: `SELECT ... FOR UPDATE` before restoring quantitie
 
 ### Configuration
 
-If `SMTP_HOST` is not set in `.env`, all email functions are silent no-ops — the app works fine without email configured.
+SMTP settings are stored in the `admin_settings` table (configurable from **Settings → Email** in the UI) with `.env` variable fallback. If no SMTP host is configured in either place, all email functions are silent no-ops — the app works fine without email.
 
 ### Transport
 
+A fresh nodemailer transport is created on **every send** by reading `getSettings()` — so SMTP config changes in the UI take effect immediately without a restart:
+
 ```typescript
+const settings = await getSettings();
+if (!settings.smtp_host) return;   // email disabled — silent no-op
+
 const transport = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_PORT === '465',
-  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  host: settings.smtp_host,
+  port: settings.smtp_port ?? 587,
+  secure: settings.smtp_secure ?? false,
+  auth: { user: settings.smtp_user, pass: settings.smtp_pass },
   tls: { rejectUnauthorized: false },
 });
 ```
@@ -574,15 +581,20 @@ Queries: usage totals for last week + items below reorder threshold → calls `e
 
 `useNotifications.ts` runs inside `Layout.tsx` and polls every 30 seconds.
 
-```
-Role: nurse   → GET /api/requests?status=pending&since=<lastSeen>
-Role: doctor  → GET /api/requests?status=fulfilled&since=<lastSeen>
-Role: admin   → GET /api/requests?status=pending&since=<lastSeen>
-
-If response.total > 0 AND notificationSound is enabled:
-  1. Play two-tone chime via Web Audio API (synthesised, no file)
-  2. Show react-hot-toast with coloured background
-  3. Advance lastSeen to now
+```mermaid
+flowchart TD
+    P["Poll every 30 s"] --> R{User role}
+    R -- "nurse / admin" --> Q1["GET /api/requests\n?status=pending&since=lastSeen"]
+    R -- doctor --> Q2["GET /api/requests\n?status=fulfilled&since=lastSeen"]
+    Q1 --> C{total > 0?}
+    Q2 --> C
+    C -- no --> P
+    C -- yes --> S{Sound enabled?}
+    S -- yes --> CH["Play two-tone chime\n(Web Audio API — no file)"]
+    CH --> T["Show react-hot-toast"]
+    S -- no --> T
+    T --> U["Advance lastSeen to now"]
+    U --> P
 ```
 
 The `since` query param filters `WHERE sr.created_at > $1` — only genuinely new records trigger notifications. The first poll after login is suppressed (initialisation guard) to avoid alerting on pre-existing items.
@@ -624,17 +636,20 @@ The app runs in `display: standalone` mode (no browser chrome) once installed.
 
 ### How it works
 
-```
-1. Connect to database
-2. CREATE TABLE IF NOT EXISTS schema_migrations(version, applied_at)
-3. Check if users table exists (existing install) and schema_migrations is empty
-   → If yes: stamp ALL migration files as applied without running them
-     (the schema is already in place from docker-entrypoint-initdb.d)
-4. For each *.sql file in src/db/migrations/ (sorted ascending):
-   → Skip if already stamped in schema_migrations
-   → Run the SQL (idempotent: uses IF NOT EXISTS / ADD COLUMN IF NOT EXISTS)
-   → INSERT into schema_migrations
-5. COMMIT
+```mermaid
+flowchart TD
+    A["App startup"] --> B["Connect to database"]
+    B --> C["CREATE TABLE IF NOT EXISTS schema_migrations"]
+    C --> D{"users table exists\nAND schema_migrations empty?"}
+    D -- "yes (existing install)" --> E["Stamp all .sql files as applied\nwithout executing them"]
+    E --> G["Start HTTP server"]
+    D -- no --> F["For each *.sql file\n(sorted ascending)"]
+    F --> H{"Already in\nschema_migrations?"}
+    H -- yes --> F
+    H -- no --> I["Execute the SQL\n(idempotent — IF NOT EXISTS)"]
+    I --> J["INSERT into schema_migrations"]
+    J --> F
+    F -- done --> G
 ```
 
 ### Migration files
@@ -657,6 +672,14 @@ All files in `backend/src/db/migrations/` are idempotent — safe to run on an e
 | `0012_stocktake_locking.sql` | Add `version` column for optimistic locking |
 | `0013_data_retention.sql` | Create `data_retention_config`, `audit_log_archive` |
 | `0014_expiry_alerts.sql` | Create `expiry_alert_config`, `expiry_alert_sent` |
+| `0015_branding.sql` | Create `system_config` (practice name, tagline) |
+| `0016_transfers.sql` | Create `stock_transfers`, `stock_transfer_items`, sequence |
+| `0017_recalls.sql` | Create `recalls` table |
+| `0018_webhooks.sql` | Create `webhook_subscriptions`, `webhook_deliveries` |
+| `0019_stocktake_schedule.sql` | Create `stocktake_schedules` table |
+| `0020_item_photos.sql` | Documents `entity_type = 'inventory_item'` in `attachments` (no schema change) |
+| `0021_reorder_config.sql` | Add `auto_reorder`, `reorder_quantity` to `inventory_items` |
+| `0022_admin_settings.sql` | Create `admin_settings` (single-row; replaces most `.env` config) |
 
 ---
 
@@ -740,9 +763,16 @@ Returns all dispensing events where `inventory_items.is_controlled = true`, incl
 
 ## Purchase Order Workflow
 
-```
-draft → sent → partial → received
-             ↘ cancelled
+```mermaid
+stateDiagram-v2
+    [*] --> draft : POST /purchase-orders\n(PO-NNNNNN generated)
+    draft --> sent : POST /send\n(emails supplier if address on file)
+    sent --> partial : POST /receive\n(some lines filled)
+    partial --> partial : POST /receive\n(more stock arrives)
+    partial --> received : POST /receive\n(all lines complete)
+    sent --> received : POST /receive\n(all at once)
+    draft --> cancelled : DELETE
+    sent --> cancelled : DELETE
 ```
 
 | Step | Endpoint | Effect |
@@ -900,12 +930,13 @@ When connectivity is restored, the service worker automatically replays the queu
 
 ### Priority chain
 
-```
-DB value (admin_settings table, id=1)
-  ↓ if NULL
-env var (SMTP_HOST, REPORT_TIMEZONE, etc.)
-  ↓ if unset
-hardcoded default
+```mermaid
+flowchart TD
+    A["DB value\n(admin_settings table, id=1)"] -->|"NULL?"| B["env var\n(SMTP_HOST, REPORT_TIMEZONE, etc.)"]
+    B -->|"unset?"| C["hardcoded default"]
+    A -->|"has value"| V["✓ Use this value"]
+    B -->|"has value"| V
+    C --> V
 ```
 
 This means:
@@ -945,6 +976,17 @@ The backup cron is started by `startBackupJob()` and re-registered whenever back
 ---
 
 ## Recall Management
+
+### Workflow
+
+```mermaid
+stateDiagram-v2
+    [*] --> active : POST /recalls\n(emails admins, fires webhook)
+    active --> quarantined : POST /quarantine\n(writes off all affected batches)
+    active --> closed : POST /close
+    quarantined --> closed : POST /close
+    closed --> [*]
+```
 
 ### Schema
 
@@ -1011,9 +1053,12 @@ One `LabelData` object per dispensed line item. A single fulfilment with 5 line 
 
 ### Workflow
 
-```
-draft → in_transit → received
-      ↘ cancelled
+```mermaid
+stateDiagram-v2
+    [*] --> draft : POST /transfers
+    draft --> in_transit : POST /dispatch\n(deducts source stock)
+    in_transit --> received : POST /receive\n(adds destination stock)
+    draft --> cancelled : DELETE
 ```
 
 **Dispatch** (`POST /api/transfers/:id/dispatch`):
