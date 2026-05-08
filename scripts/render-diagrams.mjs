@@ -166,7 +166,7 @@ for (const relPath of FILES) {
 
     try {
       execSync(
-        `node "${MMDC_CLI}" -i "${tmp}" -o "${svgPath}" --configFile "${cfgTmp}" --backgroundColor transparent`,
+        `node "${MMDC_CLI}" -i "${tmp}" -o "${svgPath}" --configFile "${cfgTmp}" --backgroundColor white`,
         { stdio: 'pipe' }
       );
 
