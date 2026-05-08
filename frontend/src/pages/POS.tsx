@@ -4,10 +4,10 @@ import { useBarcodeScan } from '../hooks/useBarcodeScan';
 import {
   ShoppingCart, Search, Plus, Minus, Trash2, Send,
   User, Hash, ChevronDown, CheckCircle2, Package, X,
-  Stethoscope, AlertTriangle
+  Stethoscope, AlertTriangle, BookOpen, Save
 } from 'lucide-react';
 import { api, getErrorMessage } from '../api/client';
-import { InventoryItem } from '../types';
+import { InventoryItem, RequestTemplate } from '../types';
 import toast from 'react-hot-toast';
 
 // ── Fuzzy filter (same logic as ItemSearchSelect) ────────────────────────────
@@ -87,6 +87,7 @@ const SuccessOverlay: React.FC<{ chargeNum: string; total: number; onDone: () =>
 
 // ── Main POS page ─────────────────────────────────────────────────────────────
 const POS: React.FC = () => {
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | 'all'>('all');
   const [basket, setBasket] = useState<BasketEntry[]>([]);
@@ -96,6 +97,8 @@ const POS: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [showBasket, setShowBasket] = useState(false);
   const [successResult, setSuccessResult] = useState<{ chargeNum: string; total: number } | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templateName, setTemplateName] = useState('');
 
   // Fetch all active inventory items
   const { data: inventoryData, isLoading: itemsLoading } = useQuery({
@@ -108,6 +111,30 @@ const POS: React.FC = () => {
   const { data: doctorsData } = useQuery({
     queryKey: ['users', 'doctors'],
     queryFn: async () => (await api.get('/users?role=doctor&active=true')).data,
+  });
+
+  // Nurse's own charge templates
+  const { data: templates = [] } = useQuery<RequestTemplate[]>({
+    queryKey: ['templates'],
+    queryFn: async () => (await api.get('/templates')).data,
+  });
+
+  const saveTemplateMutation = useMutation({
+    mutationFn: (name: string) => api.post('/templates', {
+      name,
+      items: basket.map(e => ({
+        inventory_item_id: e.item.id,
+        item_name: e.item.name,
+        quantity_requested: e.qty,
+        unit: e.item.unit,
+      })),
+    }),
+    onSuccess: () => {
+      toast.success('Template saved');
+      qc.invalidateQueries({ queryKey: ['templates'] });
+      setTemplateName('');
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const allItems: InventoryItem[] = inventoryData?.items ?? [];
@@ -455,6 +482,70 @@ const POS: React.FC = () => {
               className="input resize-none"
               placeholder="Optional notes…"
             />
+          </div>
+
+          {/* Templates */}
+          <div className="pt-1 border-t border-slate-200">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <button
+                  type="button"
+                  onClick={() => setShowTemplates(t => !t)}
+                  className="btn-secondary btn-sm w-full flex items-center gap-1"
+                >
+                  <BookOpen size={13} /> Load Template
+                  <ChevronDown size={11} className="ml-auto" />
+                </button>
+                {showTemplates && (
+                  <div className="absolute bottom-full left-0 mb-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                    {templates.length === 0 ? (
+                      <p className="text-xs text-slate-400 p-3 text-center">No saved templates yet</p>
+                    ) : templates.map(t => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          const newBasket = t.items
+                            .map(ti => {
+                              const item = allItems.find(i => i.id === ti.inventory_item_id);
+                              return item ? { item, qty: ti.quantity_requested } : null;
+                            })
+                            .filter(Boolean) as BasketEntry[];
+                          setBasket(newBasket);
+                          setShowTemplates(false);
+                          toast.success(`Template "${t.name}" loaded`);
+                        }}
+                        className="w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 border-b border-slate-100 last:border-0"
+                      >
+                        <p className="font-medium text-slate-900">{t.name}</p>
+                        <p className="text-xs text-slate-400">{t.items.length} item{t.items.length !== 1 ? 's' : ''}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {basket.length > 0 && (
+                <div className="flex gap-1 flex-1">
+                  <input
+                    type="text"
+                    value={templateName}
+                    onChange={e => setTemplateName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && templateName && saveTemplateMutation.mutate(templateName)}
+                    placeholder="Template name…"
+                    className="input text-xs flex-1 py-1.5"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => templateName && saveTemplateMutation.mutate(templateName)}
+                    disabled={!templateName || saveTemplateMutation.isPending}
+                    className="btn-secondary btn-sm px-2"
+                    title="Save basket as template"
+                  >
+                    <Save size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Total + submit */}

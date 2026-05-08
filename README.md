@@ -1,6 +1,7 @@
-# MedInventory
+# S.H.I.T.
+### Sam's Helpful Inventory Tracker
 
-A self-contained, open-source inventory management system built specifically for small-to-medium medical practices. Runs entirely on your own hardware — no cloud accounts, no subscriptions, no external dependencies.
+A self-contained, open-source inventory management system built for small-to-medium medical practices. Runs entirely on your own hardware — no cloud accounts, no subscriptions, no external dependencies.
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -20,39 +21,23 @@ A self-contained, open-source inventory management system built specifically for
 
 ## Table of Contents
 
-1. [What It Does](#what-it-does)
-2. [Quick Start](#quick-start)
-3. [First Login](#first-login)
-4. [User Roles](#user-roles)
-5. [Feature Overview](#feature-overview)
-6. [Core Workflows](#core-workflows)
+1. [Screenshots](#screenshots)
+2. [What It Does](#what-it-does)
+3. [Quick Start](#quick-start)
+4. [First Login](#first-login)
+5. [User Roles](#user-roles)
+6. [Feature Overview](#feature-overview)
 7. [Installation — Windows (Installer)](#installation--windows-installer)
-8. [Installation — Manual (Any OS)](#installation--manual-any-os)
-9. [Environment Variables](#environment-variables)
-10. [Remote Updates](#remote-updates)
-11. [Connecting Multiple Devices](#connecting-multiple-devices)
-12. [Backup & Restore](#backup--restore)
-13. [Development Setup](#development-setup)
-14. [Project Structure](#project-structure)
-
----
-
-## What It Does
-
-MedInventory replaces paper-based or spreadsheet stock management with a purpose-built web application for clinic staff. Key capabilities:
-
-| Capability | Description |
-|---|---|
-| **Stock tracking** | Real-time quantities, reorder alerts, expiry warnings, batch/lot numbers |
-| **Doctor ordering** | Doctors use a POS-style screen to request stock from nurses |
-| **Nurse fulfilment** | Nurses accept requests, dispense items, and auto-generate clinical notes |
-| **Quick Charge** | Nurses can charge stock directly against a patient/doctor without a prior request |
-| **Stocktakes** | Full, cycle, or partial stocktakes with printable count sheets and variance reports |
-| **Supplier invoices** | Record incoming invoices and update stock levels in one step |
-| **Reports** | Usage by item, by nurse, by date range; revenue summaries; trend charts |
-| **Audit trail** | Every create, update, delete, and stock movement is logged with user and timestamp |
-| **Notifications** | In-browser sound + toast when a new request or receipt arrives |
-| **Access control** | Three roles (Admin, Doctor, Nurse) with server-enforced permissions |
+8. [Installation — Docker (Any OS)](#installation--docker-any-os)
+9. [Installation — WSL2 (Windows without Docker Desktop)](#installation--wsl2-windows-without-docker-desktop)
+10. [Environment Variables](#environment-variables)
+11. [Email Notifications Setup](#email-notifications-setup)
+12. [Remote Updates](#remote-updates)
+13. [Connecting Multiple Devices](#connecting-multiple-devices)
+14. [Backup & Restore](#backup--restore)
+15. [Development Setup](#development-setup)
+16. [Project Structure](#project-structure)
+17. [Technology Stack](#technology-stack)
 
 ---
 
@@ -76,9 +61,6 @@ MedInventory replaces paper-based or spreadsheet stock management with a purpose
 ### Requests
 ![Stock requests list with status badges and priority sorting](docs/screenshots/requests.png)
 
-### Stocktakes
-![Stocktake session list with print count sheet button](docs/screenshots/stocktakes.png)
-
 ### Reports
 ![Usage reports with date range filter and charts](docs/screenshots/reports.png)
 
@@ -90,13 +72,36 @@ MedInventory replaces paper-based or spreadsheet stock management with a purpose
 
 ---
 
+## What It Does
+
+| Capability | Description |
+|---|---|
+| **Stock tracking** | Real-time quantities, reorder alerts, expiry warnings, batch/lot numbers |
+| **Doctor ordering** | POS-style grid to request stock from nurses — with saved templates |
+| **Nurse quick charge** | Charge stock directly against a patient/doctor — with saved templates |
+| **Fulfilment workflow** | Nurses accept → fulfil → doctor gets a copyable clinical note |
+| **Wastage recording** | Record dropped, contaminated, or unused stock with reason tracking |
+| **Returns to supplier** | Draft → confirm workflow that restores stock levels |
+| **Stocktakes** | Full/cycle/partial stocktakes with printable count sheets |
+| **Supplier invoices** | Record incoming stock and update levels in one step |
+| **Reports** | Usage, wastage, patient ledger, revenue, budgets — all with CSV export |
+| **Xero export** | Invoice data in Xero bank transactions format |
+| **Budget tracking** | Monthly spend vs budget per category with dashboard widget |
+| **Email notifications** | New requests, fulfilments, account lockouts, weekly summaries |
+| **Barcode scanning** | USB/Bluetooth scanner support on POS and inventory screens |
+| **PWA** | Installable on tablets and phones, works like a native app |
+| **2FA** | TOTP two-factor authentication (Google Authenticator / Authy) |
+| **Dark mode + theming** | Full dark mode; 8 accent colour presets + custom colour picker |
+| **Audit trail** | Every action logged with user, timestamp, and before/after values |
+
+---
+
 ## Quick Start
 
 ### Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) — includes everything needed (Docker Engine + Compose)
-- 4 GB RAM minimum, 8 GB recommended
-- Windows 10/11, macOS 12+, or any modern Linux
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (includes Docker Compose)  
+  — or see [WSL2 setup](#installation--wsl2-windows-without-docker-desktop) to run without Docker Desktop
 
 ### 1. Configure environment
 
@@ -104,7 +109,7 @@ MedInventory replaces paper-based or spreadsheet stock management with a purpose
 cp .env.example .env
 ```
 
-Open `.env` and at minimum change:
+Edit `.env` — at minimum change:
 
 ```env
 DB_PASSWORD=choose_a_strong_password
@@ -112,39 +117,35 @@ JWT_SECRET=at_least_32_random_characters_here
 JWT_REFRESH_SECRET=different_32_random_characters_here
 ```
 
-> **Tip — generate secrets instantly:**
+> **Generate secrets instantly:**
 > ```bash
-> # Linux / macOS
+> # Linux / macOS / WSL
 > openssl rand -hex 64
 > # Windows PowerShell
 > [BitConverter]::ToString([Security.Cryptography.RandomNumberGenerator]::GetBytes(64)) -replace '-',''
 > ```
 
-### 2. Start the application
+### 2. Start
 
 ```bash
 docker compose up --build -d
 ```
 
-First run downloads base images and builds the app (~3–5 minutes). Subsequent starts take under 30 seconds.
+First run downloads base images and builds (~3–5 min). Subsequent starts: under 30 seconds.
 
-### 3. Open in browser
+### 3. Open
 
 ```
 http://localhost:3000
 ```
 
-Or from another device on the same network:
-
-```
-http://<server-ip>:3000
-```
+Or from another device on the same network: `http://<server-ip>:3000`
 
 ---
 
 ## First Login
 
-Three demo accounts are seeded automatically. **Change all passwords immediately after first login.**
+Three demo accounts are seeded automatically. **Change all passwords immediately.**
 
 | Role | Email | Password |
 |------|-------|----------|
@@ -152,291 +153,466 @@ Three demo accounts are seeded automatically. **Change all passwords immediately
 | Doctor | doctor@clinic.local | Doctor123! |
 | Nurse | nurse@clinic.local | Nurse123! |
 
-To change your password: click your name in the bottom-left of the sidebar → **Change Password**.
-
-Users with `must_change_password = true` (set by admin) are forced to change before they can do anything else.
-
 ---
 
 ## User Roles
 
-MedInventory enforces roles on both the frontend (what you see) and the backend (what the API allows). A user cannot bypass restrictions by crafting API requests.
+| | Admin | Doctor | Nurse |
+|---|:---:|:---:|:---:|
+| Inventory (view) | ✓ | ✓ | ✓ |
+| Inventory (edit/adjust/wastage) | ✓ | ✗ | ✓ |
+| New Order screen (POS) | ✓ | ✓ | ✗ |
+| Quick Charge screen (POS) | ✓ | ✗ | ✓ |
+| Order/charge templates | ✓ | ✓ | ✓ |
+| Requests (view own) | ✓ | ✓ | ✓ |
+| Requests (fulfil/accept) | ✓ | ✗ | ✓ |
+| Stocktakes | ✓ | ✗ | ✓ |
+| Returns to supplier | ✓ | ✗ | ✓ |
+| Invoices | ✓ | ✗ | ✗ |
+| Reports | ✓ | ✓* | ✗ |
+| Budgets | ✓ | ✗ | ✗ |
+| Users / Audit / Settings | ✓ | ✗ | ✗ |
 
-### Admin
-Full access to everything. Responsible for:
-- Creating and managing user accounts
-- Adding categories, suppliers, inventory items
-- Entering supplier invoices
-- Running reports and viewing the audit log
-- Configuring the system (Settings page)
-
-### Doctor
-- **New Order screen**: POS-style grid to request stock from nurses (patient name, priority, notes)
-- Views only their own requests and the fulfilment status of each
-- Cannot see other doctors' requests
-- Cannot access invoices, users, audit log, or settings
-
-### Nurse
-- **Quick Charge screen**: Charge stock directly against a doctor/patient without waiting for a request
-- Accepts and fulfils doctor stock requests
-- Runs and completes stocktakes
-- Cannot access invoices, reports, users, audit log, or settings
+*Doctors see usage reports for their own requests only.
 
 ---
 
 ## Feature Overview
 
-### Inventory Management
-- Items have: name, SKU, barcode, category, supplier, unit, price, GST rate, storage location, reorder threshold, batch tracking flag, and **dispense step**
-- The **dispense step** controls how the +/− buttons increment quantity in the ordering screens (e.g. set to `5` for items dispensed in packs of five)
-- Stock levels update automatically on every fulfilment, quick charge, invoice posting, or manual adjustment
-- **Low stock alerts** appear on the dashboard and inventory list when `quantity_on_hand ≤ reorder_threshold`
-- **Expiry alerts** appear when any batch expires within 30 days
+### POS Ordering Screens
 
-### Doctor Ordering (New Order Screen)
-1. Doctor opens **New Order** in the sidebar
-2. Taps items from the category grid (fuzzy search available)
-3. Adjusts quantities with +/− (respects each item's dispense step)
-4. Fills in patient name / reference and priority (Low / Normal / High / Urgent)
-5. Clicks **Send to Nurses** — creates a pending `stock_request`
-6. All nurses immediately see the request in their Requests list
-7. Nurse accepts → fulfils → stock deducted → doctor sees completed receipt
+**Doctor — New Order (`/order`)**
+- Item grid grouped by category, fuzzy search bar, category filter pills
+- Tap items to add; +/− buttons honour each item's configured dispense step
+- Priority selector (Low / Normal / High / Urgent)
+- Patient name + reference fields
+- Save basket as a named **template**; load templates with one click
+- **Barcode scanner** — scan any item to add it instantly
+- Submit → pending request visible to all nurses immediately
 
-### Nurse Quick Charge (POS Screen)
-1. Nurse opens **Quick Charge** in the sidebar
-2. Taps items from the category grid
-3. Selects the associated doctor from the dropdown
-4. Optionally enters patient name and reference
-5. Clicks **Send Receipt to Doctor** — stock is deducted instantly and a `QC-XXXXXX` receipt is created
-6. Doctor sees the receipt in their Requests list (marked as quick charge)
+**Nurse — Quick Charge (`/pos`)**
+- Same item grid and fuzzy search
+- Select doctor and optional patient details
+- Save/load **charge templates** for common procedures
+- **Barcode scanner** support
+- Submit → stock deducted immediately, receipt sent to doctor
 
-### Stock Requests Workflow (Detail)
-- Requests flow through states: `pending` → `accepted` → `in_progress` → `fulfilled`
-- Nurses can partially fulfil (substitutions supported — different item flagged)
-- Each fulfilment produces a **copyable stock note** formatted for pasting into clinical systems:
-  ```
-  Stock used
-  3x Amoxicillin 500mg
-  1x Gauze Roll
-  ```
-- Priority (Urgent/High) items sort to the top of the nurse request list
+### Templates (Doctors and Nurses)
+Both roles can save named baskets:
+- Tap **Load Template** to restore a saved basket
+- Type a name and click **Save** to capture the current basket
+- Templates are private per user — doctors see their own, nurses see theirs
+- Ideal for recurring procedures: "Flu clinic", "Wound dressing", "Pre-op tray"
 
-### Stocktakes
-1. Admin or nurse creates a stocktake session (Full / Cycle / Partial by category or location)
-2. Print a **count sheet** — A4 table with expected quantities and blank "Counted" columns
-3. Staff walk the clinic, fill in physical counts on the paper sheet
-4. Enter counted quantities into the system (search/filter uncounted items)
-5. System calculates variance (counted − expected) for each item
-6. Complete the stocktake — optionally apply all variances as stock adjustments
-7. Export results to CSV for records
+### Copyable Clinical Note
+After any fulfilment (normal request or quick charge), a green panel appears on the receipt:
+```
+Stock used
+3x Amoxicillin 500mg
+1x Gauze Roll 10cm
+```
+Click **Copy** → paste directly into your clinical notes system.
 
-### Reports
-- **Usage**: total quantities dispensed by item, grouped by time period
-- **By nurse**: which nurses handled which requests, quantities used, charges
-- **Revenue**: total billing per period, trend charts (daily / weekly / monthly)
-- **Invoices**: line-item export of all invoice records
-- All reports support date-range filtering and CSV export
+### Wastage Recording
+Record stock lost without being used on a patient:
+- Accessible via the bin icon on each inventory row
+- Reasons: Dropped / Contaminated / Opened but unused / Incorrect dose drawn / Expired after opening / Other
+- Full report in **Reports → Wastage** with cost summary and CSV export
 
-### Notifications
-- Every 30 seconds, the app silently polls for new activity
-- **Nurses** hear a two-tone chime and see a toast notification when a new doctor request arrives
-- **Doctors/Admins** are notified when a nurse submits a quick-charge receipt
-- Sound uses the Web Audio API — no external sound files needed
-- Respects browser audio permissions; fails silently if audio is blocked
+### Returns to Supplier
+1. Create a draft return (supplier, items, batches, quantities, reason)
+2. Admin confirms → stock levels restored automatically
+3. Full audit trail with adjustment records
 
-### Audit Log
-Every significant action is recorded:
-- Who performed it (user name, role, IP address)
-- What entity was affected (type + ID + name)
-- Old values and new values (JSON diff)
-- Timestamp
+### FEFO Enforcement
+When fulfilling a request, clicking **Load batches** auto-selects the batch expiring soonest that still has stock (First Expired, First Out). No manual searching required.
 
-The audit log is append-only — no user can delete records.
+### Budget Tracking
+- Admin sets a monthly spend budget per category (Settings or via API)
+- Dashboard widget shows progress bars (green → amber → red)
+- `GET /api/budgets?month=YYYY-MM` for programmatic access
 
-### Session Security
-- JWT access tokens expire after 15 minutes; automatically refreshed using 30-day refresh tokens
-- Accounts lock after 5 failed login attempts (configurable) for 15 minutes
-- **Session idle timeout**: after 28 minutes of inactivity, a countdown warning appears; auto-logout at 30 minutes
-- All secrets stored in `.env`, never committed to version control
+### Email Notifications
+Set SMTP credentials in `.env` to activate (see [Email Notifications Setup](#email-notifications-setup)):
+- **New request** → all active nurses receive an email
+- **Request fulfilled** → the doctor receives a receipt email
+- **Quick charge** → the doctor receives a notification
+- **Account locked** → admins alerted
+- **After-hours login** → admins alerted (login before 7am or after 8pm)
+- **Weekly report** → admins receive usage summary + low stock list every Monday 8am
 
----
+### Barcode Scanner
+Connect any USB or Bluetooth barcode scanner — it works automatically. Scanners emit keystrokes faster than humans type; the app detects this and looks up the item by barcode or SKU. Works on the POS and inventory screens.
 
-## Core Workflows
+### Patient Ledger
+Reports → Patient Ledger: search by patient name or reference to see all charges ever recorded for that patient — requests, quick charges, dates, doctors, totals.
 
-### Adding a New Item to Inventory
+### Two-Factor Authentication (2FA)
+Set up in **My Account → Security**:
+1. Click **Enable 2FA** → scan the QR code with Google Authenticator or Authy
+2. Enter the 6-digit code to confirm
+3. All future logins require the password **and** a TOTP code
 
-1. Log in as **Admin**
-2. Go to **Inventory** → **Add Item**
-3. Fill in required fields: Name, Unit, Category (optional)
-4. Set **Internal Price** (used for billing calculations)
-5. Set **Reorder Threshold** (triggers low-stock alert)
-6. Set **Dispense Step** (e.g. `5` for items sold in packs of 5)
-7. Save — the item is now available in the ordering and quick-charge screens
+### Progressive Web App (PWA)
+Visit the app in Chrome/Edge/Safari on any device and install it:
+- Chrome/Edge desktop: install icon in the address bar
+- Mobile: "Add to Home Screen" in the browser menu
+- Runs full-screen, no browser chrome, works like a native app
+- Includes home screen shortcuts to Quick Charge and New Order
 
-### Recording a Supplier Invoice
+### Keyboard Shortcuts
+| Key | Action |
+|-----|--------|
+| `/` or `F` | Focus search bar |
+| `N` | New item / order / request |
+| `Esc` | Close modal |
+| `?` | Show shortcut help |
 
-1. Log in as **Admin**
-2. Go to **Invoices** → **New Invoice**
-3. Enter invoice number, supplier, and date
-4. Add line items — link each to an existing inventory item
-5. Enter quantities and unit costs; GST calculated automatically
-6. **Post** the invoice — stock levels update for all linked items
+Shortcuts are suppressed when typing inside a form field.
 
-### Running a Stocktake
-
-1. **Admin/Nurse**: Stocktakes → New Stocktake → choose Full / Cycle / Partial
-2. Click **Count Sheet** to print a paper form with expected quantities
-3. Walk the clinic, count physical stock, write on the form
-4. Back at the computer: enter counted quantities item by item
-5. Use the **Filter uncounted** toggle to track progress
-6. Click **Complete** and choose whether to apply variances as adjustments
-7. Export the results to CSV if needed for compliance records
-
-### Fulfilling a Doctor Request
-
-1. Log in as **Nurse**
-2. Go to **Requests** — new requests appear at the top, sorted by priority
-3. Open the request → click **Accept** (moves to `accepted` status)
-4. Click **Fulfil** — a modal shows all requested items
-5. Confirm quantities (adjust if short), select batch numbers if batch-tracked
-6. Note any substitutions (different item used) with a reason
-7. Click **Complete Fulfilment** — stock deducted, doctor notified
-8. The fulfilment record shows a **green copyable panel** — click Copy to paste into clinical notes
+### Dark Mode & Theming
+- **Dark mode toggle** in the sidebar (bottom) and My Account page
+- **8 accent colour presets**: Blue, Indigo, Violet, Rose, Amber, Emerald, Cyan, Slate
+- **Custom colour picker** for any hex value
+- Admin can set the clinic-wide colour in Settings → Clinic Theme
+- Each user can override on their own profile page
+- All preferences saved to browser localStorage
 
 ---
 
 ## Installation — Windows (Installer)
 
-The Inno Setup installer (`installer/MedInventory.iss`) produces a standard Windows `.exe` that:
+The Inno Setup script (`installer/MedInventory.iss`) builds a standard Windows `.exe` that:
 
-1. Checks for Docker Desktop — downloads and installs it if missing
+1. Checks for Docker Desktop — downloads and installs if missing
 2. Prompts for install directory (default: `C:\MedInventory`)
-3. Copies all application files
-4. Generates a `.env` file with cryptographically random secrets
-5. Opens Windows Firewall port 3000 for LAN access
-6. Runs `docker compose up --build -d` to start the application
-7. Creates a desktop shortcut and Start Menu entry
-8. Registers a Windows Task Scheduler job to auto-start on boot
+3. Generates a `.env` with cryptographically random secrets
+4. Opens Windows Firewall port 3000
+5. Runs `docker compose up --build -d`
+6. Creates a desktop shortcut and Start Menu entry
+7. Registers a Task Scheduler job to auto-start on boot
 
-### Building the installer
-
+**Building the installer:**
 1. Install [Inno Setup](https://jrsoftware.org/isdl.php) (free)
-2. Open `installer/MedInventory.iss` in Inno Setup
-3. Click **Build → Compile**
-4. The installer `.exe` appears in `installer/output/`
+2. Open `installer/MedInventory.iss` → Build → Compile
+3. Find `Setup_MedInventory_v1.1.0.exe` in `installer/output/`
 
 ---
 
-## Installation — Manual (Any OS)
+## Installation — Docker (Any OS)
 
 ### Linux / macOS
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/TheHomelessTwig/medical-inventory.git
 cd medical-inventory
-
-# 2. Configure
 cp .env.example .env
-nano .env   # set DB_PASSWORD, JWT_SECRET, JWT_REFRESH_SECRET
-
-# 3. Start
+nano .env          # set DB_PASSWORD, JWT_SECRET, JWT_REFRESH_SECRET
 docker compose up --build -d
-
-# 4. Optional: auto-start on Linux (systemd)
-sudo cp docs/medinventory.service /etc/systemd/system/
-sudo systemctl enable --now medinventory
 ```
 
-### Verifying it's running
+### Verify
 
 ```bash
 curl http://localhost:3000/health
 # {"status":"ok","timestamp":"..."}
 ```
 
+### Auto-start on Linux (systemd)
+
+```bash
+sudo nano /etc/systemd/system/shit-inventory.service
+```
+```ini
+[Unit]
+Description=S.H.I.T. Inventory
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/medinv
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
+User=YOUR_USERNAME
+
+[Install]
+WantedBy=multi-user.target
+```
+```bash
+sudo systemctl enable --now shit-inventory
+```
+
+---
+
+## Installation — WSL2 (Windows without Docker Desktop)
+
+Run the app directly inside WSL2 using Docker Engine — no Docker Desktop GUI required, lower memory overhead.
+
+### Step 1 — Install Docker Engine in WSL2
+
+```bash
+# In your WSL2 terminal (Ubuntu 22.04 recommended)
+sudo apt update && sudo apt install -y ca-certificates curl gnupg
+
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+# Run Docker without sudo
+sudo usermod -aG docker $USER && newgrp docker
+```
+
+### Step 2 — Copy the project into WSL2
+
+**Important:** Run from the WSL filesystem (`/home/...`), not from `/mnt/c/...`. Cross-filesystem I/O is slow.
+
+```bash
+cp -r /mnt/d/Claude/Claudes\ Cave/medical-inventory ~/medical-inventory
+cd ~/medical-inventory
+cp .env.example .env
+nano .env    # set your secrets
+```
+
+### Step 3 — Start Docker and the app
+
+```bash
+sudo service docker start
+docker compose up --build -d
+```
+
+The app is now running at `localhost:3000` inside WSL. Your Windows browser can reach it, but other LAN devices cannot yet.
+
+### Step 4 — Forward port 3000 to your LAN
+
+WSL2 has its own internal IP that changes on each restart. Run this in **Windows PowerShell (Admin)**:
+
+```powershell
+# Get WSL2's current IP and forward port 3000 through Windows
+$wslIp = (wsl hostname -I).Trim().Split()[0]
+
+netsh interface portproxy add v4tov4 `
+    listenaddress=0.0.0.0 `
+    listenport=3000 `
+    connectaddress=$wslIp `
+    connectport=3000
+
+netsh advfirewall firewall add rule `
+    name="SHIT Inventory" `
+    dir=in action=allow protocol=TCP localport=3000
+
+Write-Host "Forwarded: Windows:3000 → WSL2 $wslIp`:3000"
+```
+
+Other LAN devices can now reach the app at `http://<your-windows-ip>:3000`.
+
+### Step 5 — Auto-start on Windows boot
+
+Save this as `C:\startup-shit.ps1`:
+
+```powershell
+# Start WSL2 Docker + the app
+wsl -d Ubuntu -- bash -c "sudo service docker start && cd ~/medical-inventory && docker compose up -d"
+
+# Re-apply port forwarding (WSL2 IP changes on reboot)
+Start-Sleep -Seconds 8
+$wslIp = (wsl hostname -I).Trim().Split()[0]
+netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=3000 2>$null
+netsh interface portproxy add v4tov4 `
+    listenaddress=0.0.0.0 listenport=3000 `
+    connectaddress=$wslIp connectport=3000
+Write-Host "S.H.I.T. started at http://$wslIp`:3000"
+```
+
+Register as a Task Scheduler job (run in PowerShell as Admin):
+
+```powershell
+$action  = New-ScheduledTaskAction `
+    -Execute "powershell.exe" `
+    -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File C:\startup-shit.ps1"
+$trigger = New-ScheduledTaskTrigger -AtStartup
+$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
+
+Register-ScheduledTask `
+    -TaskName "SHIT-Inventory-WSL" `
+    -Action $action -Trigger $trigger -Principal $principal `
+    -Description "Starts S.H.I.T. inventory in WSL2 on boot"
+```
+
+### Optional — systemd inside WSL2 (Ubuntu 22.04+)
+
+Enable systemd for a cleaner auto-start. Add to `/etc/wsl.conf`:
+
+```ini
+[boot]
+systemd=true
+```
+
+Restart WSL (`wsl --shutdown` in PowerShell, then reopen). Then create a systemd service:
+
+```bash
+sudo nano /etc/systemd/system/shit-inventory.service
+```
+```ini
+[Unit]
+Description=S.H.I.T. Inventory
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/YOUR_USERNAME/medical-inventory
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
+User=YOUR_USERNAME
+
+[Install]
+WantedBy=multi-user.target
+```
+```bash
+sudo systemctl enable --now shit-inventory
+```
+
+### WSL2 memory tuning
+
+Create `%USERPROFILE%\.wslconfig` on Windows:
+
+```ini
+[wsl2]
+memory=4GB
+processors=2
+swap=2GB
+```
+
+Restart WSL: `wsl --shutdown` in PowerShell.
+
+### WSL2 vs Docker Desktop — which to use?
+
+| Scenario | Recommendation |
+|---|---|
+| Casual use on a personal Windows PC | Docker Desktop — simplest setup |
+| Want to remove the Docker Desktop GUI | WSL2 + Docker Engine (this guide) |
+| Dedicated always-on clinic server | Linux natively — no WSL complexity |
+
 ---
 
 ## Environment Variables
 
-All configuration lives in `.env`. Copy `.env.example` as a starting point.
+All configuration in `.env`. Copy `.env.example` as a starting point.
 
 | Variable | Default | Description |
 |---|---|---|
 | `DB_NAME` | `medical_inventory` | PostgreSQL database name |
 | `DB_USER` | `medinv` | PostgreSQL user |
-| `DB_PASSWORD` | *(required)* | PostgreSQL password — must be changed |
-| `JWT_SECRET` | *(required)* | Secret for signing access tokens — minimum 32 characters |
-| `JWT_REFRESH_SECRET` | *(required)* | Secret for signing refresh tokens — different from JWT_SECRET |
+| `DB_PASSWORD` | *(required)* | PostgreSQL password |
+| `JWT_SECRET` | *(required)* | Access token signing key (min 32 chars) |
+| `JWT_REFRESH_SECRET` | *(required)* | Refresh token key (different from JWT_SECRET) |
 | `JWT_EXPIRES_IN` | `15m` | Access token lifetime |
 | `JWT_REFRESH_EXPIRES_IN` | `30d` | Refresh token lifetime |
 | `NODE_ENV` | `production` | Set to `development` for verbose logging |
-| `CORS_ORIGIN` | `*` | Allowed CORS origin. Use `*` for LAN access or restrict to a specific IP |
-| `SESSION_TIMEOUT_MINUTES` | `30` | Minutes of inactivity before auto-logout |
+| `CORS_ORIGIN` | `*` | Allowed CORS origin — `*` for LAN access |
+| `SESSION_TIMEOUT_MINUTES` | `30` | Idle minutes before auto-logout |
 | `MAX_LOGIN_ATTEMPTS` | `5` | Failed attempts before account lockout |
-| `LOCKOUT_MINUTES` | `15` | How long an account stays locked |
+| `LOCKOUT_MINUTES` | `15` | Lock duration |
+| `SMTP_HOST` | *(optional)* | SMTP server hostname — leave blank to disable email |
+| `SMTP_PORT` | `587` | SMTP port (587 for STARTTLS, 465 for SSL) |
+| `SMTP_USER` | *(optional)* | SMTP username / email address |
+| `SMTP_PASS` | *(optional)* | SMTP password |
+| `SMTP_FROM` | `S.H.I.T. <noreply@clinic.local>` | From address shown on emails |
+| `APP_URL` | `http://localhost:3000` | Base URL used in email links |
+| `REPORT_TIMEZONE` | `UTC` | Timezone for weekly report schedule (IANA name) |
 
-> **Never commit `.env` to version control.** The `.gitignore` excludes it.
+> **Never commit `.env` to version control.** It is excluded by `.gitignore`.
+
+---
+
+## Email Notifications Setup
+
+### Gmail (App Password)
+
+1. Enable 2-Step Verification on your Google account
+2. Go to **Google Account → Security → App passwords**
+3. Generate an app password for "Mail"
+4. Add to `.env`:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your@gmail.com
+SMTP_PASS=xxxx xxxx xxxx xxxx   # the 16-char app password
+SMTP_FROM=S.H.I.T. <your@gmail.com>
+APP_URL=http://192.168.1.100:3000
+```
+
+### Outlook / Microsoft 365
+
+```env
+SMTP_HOST=smtp.office365.com
+SMTP_PORT=587
+SMTP_USER=your@clinic.com
+SMTP_PASS=your_password
+```
+
+### Weekly report timezone
+
+```env
+REPORT_TIMEZONE=Australia/Sydney   # or America/New_York, Europe/London, etc.
+```
+
+Reports fire every **Monday at 8am** in the configured timezone.
 
 ---
 
 ## Remote Updates
 
-### Windows
+### Windows (PowerShell / RDP)
 
 ```powershell
 cd C:\MedInventory
 powershell -ExecutionPolicy Bypass -File update.ps1
+
+# Skip git pull (if files were manually copied):
+powershell -ExecutionPolicy Bypass -File update.ps1 -SkipGitPull
 ```
 
 ### Linux / macOS
 
 ```bash
-cd /opt/medinv
-bash update.sh
+cd /opt/medinv && bash update.sh
 ```
 
-Both scripts:
-1. Create a timestamped database backup (`backups/pre_update_YYYYMMDD_HHMM.sql.gz`)
-2. Pull the latest code from git (if the directory is a git repository)
-3. Rebuild Docker containers
-4. Restart services
-5. Wait up to 60 seconds for the health check to confirm the app is running
+### WSL2
 
-**Skip git pull** (when deploying manually copied files):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File update.ps1 -SkipGitPull
+```bash
+# In WSL terminal
+cd ~/medical-inventory && bash update.sh
 ```
 
-**Skip database backup:**
-
-```powershell
-powershell -ExecutionPolicy Bypass -File update.ps1 -NoBackup
-```
+Both scripts: backup DB → pull latest code → rebuild containers → health check.
 
 ---
 
 ## Connecting Multiple Devices
 
-MedInventory is designed for LAN access — every device on the same network can use it through the server's IP address.
+All API calls use relative URLs — the nginx container proxies `/api/*` internally. No configuration changes are needed when connecting from a new device.
 
-### Finding the server IP
+**Find your server IP:**
+- Windows: `ipconfig` → IPv4 Address
+- Linux/macOS: `ip addr` or `ifconfig`
+- WSL2: `hostname -I` (inside WSL), then use the Windows host IP
 
-**Windows:** `ipconfig` → look for IPv4 address (usually `192.168.x.x`)  
-**Linux/macOS:** `ip addr` or `ifconfig`
-
-### Connecting
-
+**Connect from any browser:**
 ```
 http://192.168.1.100:3000
 ```
-
-Replace `192.168.1.100` with your server's actual IP. Works from any browser — phone, tablet, or desktop.
-
-### How it works
-
-All API calls use relative URLs (`/api/...`). The nginx container inside Docker proxies them to the backend — so the frontend code works identically regardless of which IP the browser connects from. No configuration changes are needed when connecting from a new device.
 
 ---
 
@@ -445,70 +621,53 @@ All API calls use relative URLs (`/api/...`). The nginx container inside Docker 
 ### Manual backup
 
 ```bash
-docker exec medinv_postgres pg_dump -U medinv medical_inventory | gzip > backup_$(date +%Y%m%d).sql.gz
+docker exec medinv_postgres pg_dump -U medinv medical_inventory \
+  | gzip > backup_$(date +%Y%m%d).sql.gz
 ```
 
-### Restore from backup
+### Restore
 
 ```bash
-gunzip -c backup_20260101.sql.gz | docker exec -i medinv_postgres psql -U medinv medical_inventory
+gunzip -c backup_20260101.sql.gz \
+  | docker exec -i medinv_postgres psql -U medinv medical_inventory
 ```
 
-### Automated backups (Linux)
-
-Add to crontab (`crontab -e`):
+### Automated daily backups (Linux crontab)
 
 ```cron
-0 2 * * * docker exec medinv_postgres pg_dump -U medinv medical_inventory | gzip > /opt/medinv/backups/daily_$(date +\%Y\%m\%d).sql.gz
+0 2 * * * docker exec medinv_postgres pg_dump -U medinv medical_inventory \
+  | gzip > /opt/medinv/backups/daily_$(date +\%Y\%m\%d).sql.gz
 ```
 
 ---
 
 ## Development Setup
 
-### Prerequisites
-
-- Node.js 20+
-- PostgreSQL 16 (or run via Docker)
-- npm
-
-### 1. Backend
+### Backend
 
 ```bash
 cd backend
 cp ../.env.example ../.env
-# Edit .env: set DB_HOST=localhost, NODE_ENV=development
+# Edit: DB_HOST=localhost, NODE_ENV=development
 npm install
-npm run dev        # nodemon with ts-node, restarts on save
+npm run dev    # ts-node-dev, restarts on save
 ```
 
-### 2. Frontend
+### Frontend
 
 ```bash
 cd frontend
 npm install
-npm run dev        # Vite dev server at http://localhost:5173
+echo "VITE_API_URL=http://localhost:4000" > .env.local
+npm run dev    # Vite at http://localhost:5173
 ```
 
-Configure `frontend/.env.local`:
-
-```env
-VITE_API_URL=http://localhost:4000
-```
-
-### 3. Running tests
+### Tests
 
 ```bash
-# Backend (requires a running PostgreSQL with the test DB)
-cd backend
-npm test
-
-# Frontend
-cd frontend
-npm test
+cd backend && npm test    # creates/destroys medical_inventory_test DB
+cd frontend && npm test
 ```
-
-Tests use an isolated `medical_inventory_test` database that is created and destroyed automatically. Never run tests against the production database.
 
 ### Dev with Docker (recommended)
 
@@ -516,7 +675,7 @@ Tests use an isolated `medical_inventory_test` database that is created and dest
 docker compose -f docker-compose.dev.yml up
 ```
 
-This mounts source files as volumes so changes to TypeScript files rebuild automatically without a full Docker rebuild.
+Source files are mounted as volumes — TypeScript changes rebuild automatically.
 
 ---
 
@@ -525,97 +684,76 @@ This mounts source files as volumes so changes to TypeScript files rebuild autom
 ```
 medical-inventory/
 │
-├── docker-compose.yml          # Production: postgres + backend + frontend (nginx)
-├── docker-compose.dev.yml      # Development: live-reload volumes
-├── .env.example                # Template — copy to .env and fill in secrets
-├── version.json                # Current app version (read by /api/system/version)
-├── update.ps1                  # Windows remote-update script
-├── update.sh                   # Linux/macOS remote-update script
+├── docker-compose.yml              # Production: postgres + backend + frontend (nginx)
+├── docker-compose.dev.yml          # Dev: live-reload volumes
+├── .env.example                    # Template — copy to .env
+├── version.json                    # App version (read by /api/system/version)
+├── update.ps1 / update.sh          # Remote update scripts
 │
 ├── backend/
-│   ├── Dockerfile
-│   ├── package.json
-│   ├── tsconfig.json
 │   └── src/
-│       ├── app.ts              # Express app setup (routes, middleware)
-│       ├── index.ts            # Entry point — calls app.listen()
-│       ├── db.ts               # PostgreSQL pool + transaction helper
-│       ├── schema.sql          # Full database schema (run once on fresh DB)
-│       ├── seed.sql            # Demo users and sample data
+│       ├── app.ts                  # Express setup (routes, middleware)
+│       ├── index.ts                # Entry point + cron job start
+│       ├── db.ts                   # PostgreSQL pool + withTransaction()
+│       ├── schema.sql              # Complete DB schema (single source of truth)
+│       ├── seed.sql                # Demo data
+│       ├── jobs/
+│       │   └── scheduledReports.ts # Weekly email report (node-cron)
 │       ├── middleware/
-│       │   ├── auth.ts         # JWT verification, requireRole helpers
-│       │   └── errorHandler.ts # Centralised error responses
+│       │   ├── auth.ts             # JWT verify, requireRole helpers
+│       │   └── errorHandler.ts
 │       ├── routes/
-│       │   ├── auth.ts         # Login, logout, token refresh, me
-│       │   ├── inventory.ts    # CRUD, adjust stock, CSV import/export
-│       │   ├── requests.ts     # Doctor requests + nurse fulfilment + quick-charge
-│       │   ├── stocktakes.ts   # Stocktake sessions, item counting, CSV export
-│       │   ├── invoices.ts     # Supplier invoices, line items, posting
-│       │   ├── reports.ts      # Usage, nurse summary, revenue, trends
-│       │   ├── users.ts        # User management (admin only)
-│       │   ├── audit.ts        # Audit log queries
-│       │   ├── categories.ts   # Category CRUD
-│       │   ├── suppliers.ts    # Supplier CRUD
-│       │   └── system.ts       # Version and health/status info
-│       ├── utils/
-│       │   └── audit.ts        # logAudit() helper
-│       └── tests/
-│           ├── globalSetup.ts  # Creates/destroys test DB
-│           ├── helpers.ts      # Shared test utilities
-│           └── *.test.ts       # Test files per route
+│       │   ├── auth.ts             # Login, refresh, 2FA (TOTP), profile
+│       │   ├── inventory.ts        # CRUD, adjust, wastage, bulk ops, CSV
+│       │   ├── requests.ts         # Doctor requests, nurse fulfilment, quick charge, patient ledger
+│       │   ├── templates.ts        # Saved order/charge templates (all roles)
+│       │   ├── returns.ts          # Returns to supplier
+│       │   ├── budgets.ts          # Monthly category budgets
+│       │   ├── stocktakes.ts       # Stocktake sessions + CSV export
+│       │   ├── invoices.ts         # Supplier invoices + Xero export
+│       │   ├── reports.ts          # Usage, wastage, patient ledger, movements
+│       │   ├── users.ts            # User management (admin)
+│       │   ├── audit.ts            # Audit log
+│       │   ├── categories.ts       # Category CRUD
+│       │   ├── suppliers.ts        # Supplier CRUD
+│       │   └── system.ts           # Version, health, status
+│       └── utils/
+│           ├── audit.ts            # logAudit() helper
+│           └── email.ts            # Nodemailer wrapper + typed email functions
 │
 ├── frontend/
-│   ├── Dockerfile
-│   ├── nginx.conf              # Proxies /api/* to backend:4000
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── vite.config.ts
-│   ├── tailwind.config.js
 │   └── src/
-│       ├── main.tsx            # React entry, QueryClient, Toaster
-│       ├── App.tsx             # Router, ProtectedRoute, all page routes
-│       ├── api/
-│       │   └── client.ts       # Axios instance, interceptors, token refresh
+│       ├── App.tsx                 # Router + all page routes
 │       ├── context/
-│       │   └── AuthContext.tsx # Auth state, login/logout, token storage
-│       ├── types/
-│       │   └── index.ts        # All shared TypeScript interfaces
+│       │   ├── AuthContext.tsx     # Auth state, login/logout, token storage
+│       │   └── ThemeContext.tsx    # Dark mode + accent colour + notification sound
 │       ├── hooks/
+│       │   ├── useBarcodeScan.ts   # USB/Bluetooth scanner detection
 │       │   ├── useDebounce.ts
-│       │   ├── useIdleTimeout.ts      # Session idle detection
-│       │   └── useNotifications.ts    # Polling + Web Audio beep
+│       │   ├── useIdleTimeout.ts   # Session idle detection
+│       │   ├── useKeyboardShortcuts.ts
+│       │   └── useNotifications.ts # Polling + Web Audio beep
 │       ├── components/
-│       │   ├── Layout.tsx             # Shell with sidebar + outlet
-│       │   ├── Sidebar.tsx            # Navigation (role-filtered)
-│       │   ├── Header.tsx             # Mobile hamburger
-│       │   ├── Modal.tsx              # Reusable modal wrapper
-│       │   ├── ConfirmDialog.tsx      # Reusable confirm prompt
-│       │   ├── Badge.tsx              # Status/priority colour chips
-│       │   ├── LoadingSpinner.tsx
-│       │   ├── ItemSearchSelect.tsx   # Fuzzy-search item combobox
-│       │   └── SessionTimeoutWarning.tsx
+│       │   ├── ItemSearchSelect.tsx    # Fuzzy-search item combobox
+│       │   ├── KeyboardHelpOverlay.tsx # ? shortcut help modal
+│       │   ├── WastageModal.tsx        # Record wastage modal
+│       │   └── ...                    # Modal, Badge, Sidebar, etc.
 │       └── pages/
-│           ├── Login.tsx
-│           ├── ChangePassword.tsx
-│           ├── Dashboard.tsx          # KPIs, charts, alerts
-│           ├── Inventory.tsx          # Item list, add/edit, adjust stock
-│           ├── DoctorOrder.tsx        # POS-style ordering for doctors
-│           ├── POS.tsx                # Quick Charge screen for nurses
-│           ├── Requests.tsx           # Request list
-│           ├── RequestDetail.tsx      # Request detail + fulfilment + stock note
-│           ├── Stocktakes.tsx         # Stocktake list + print count sheet
-│           ├── StocktakeSession.tsx   # Active counting session
-│           ├── Invoices.tsx           # Invoice list
-│           ├── InvoiceDetail.tsx      # Invoice detail + posting
-│           ├── Reports.tsx            # Usage / nurse / revenue reports
-│           ├── Users.tsx              # User management (admin)
-│           ├── AuditLog.tsx           # Audit trail viewer
-│           └── Settings.tsx           # Categories, suppliers, system info
+│           ├── DoctorOrder.tsx    # POS order screen (doctors) + templates
+│           ├── POS.tsx            # Quick charge screen (nurses) + templates
+│           ├── RequestDetail.tsx  # Request detail + FEFO + copyable note
+│           ├── Returns.tsx        # Returns to supplier
+│           ├── Reports.tsx        # All reports incl. wastage + patient ledger
+│           ├── Profile.tsx        # My Account: name/email, 2FA, theme, notifications
+│           └── ...
 │
-└── installer/
-    ├── install.ps1             # Windows PowerShell installer script
-    ├── uninstall.ps1           # Windows uninstaller
-    └── MedInventory.iss        # Inno Setup script → builds Setup_MedInventory.exe
+├── installer/
+│   ├── install.ps1     # Windows installer script
+│   ├── uninstall.ps1
+│   └── MedInventory.iss  # Inno Setup → builds Setup_MedInventory.exe
+│
+└── scripts/
+    └── take-screenshots.mjs  # Puppeteer screenshot script for docs
 ```
 
 ---
@@ -624,22 +762,21 @@ medical-inventory/
 
 | Layer | Technology | Version |
 |-------|------------|---------|
-| Frontend framework | React | 18 |
-| Language (frontend) | TypeScript | 5 |
-| Build tool | Vite | 5 |
+| Frontend | React + TypeScript + Vite | 18 / 5 / 5 |
 | Styling | Tailwind CSS | 3 |
 | Server state | TanStack Query | 5 |
 | Forms | React Hook Form | 7 |
 | Charts | Recharts | 2 |
 | Routing | React Router | 6 |
-| Backend framework | Express | 4 |
-| Language (backend) | TypeScript / Node.js | 20 |
+| PWA | vite-plugin-pwa + Workbox | — |
+| Backend | Express + TypeScript / Node.js | 4 / 20 |
 | Database | PostgreSQL | 16 |
 | Validation | Zod | 3 |
-| Auth | JWT (jsonwebtoken + bcrypt) | — |
-| Containerisation | Docker + Compose | — |
-| Reverse proxy | nginx (Alpine) | — |
-| Testing | Vitest + supertest | — |
+| Auth | JWT + bcrypt + TOTP (otplib) | — |
+| Email | Nodemailer | 6 |
+| Scheduler | node-cron | 3 |
+| Containerisation | Docker + Compose + nginx | — |
+| Testing | Vitest + supertest + RTL | — |
 
 All dependencies are free and open-source. No paid services, no telemetry, no external API calls.
 

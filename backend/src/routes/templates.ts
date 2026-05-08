@@ -1,30 +1,37 @@
 /**
- * Requisition templates — doctors save named order templates.
- * GET  /api/templates           - list own templates
- * POST /api/templates           - create
- * PUT  /api/templates/:id       - update
- * DELETE /api/templates/:id     - delete
+ * Order / charge templates — any logged-in user can save named baskets.
+ * Doctors use these in the New Order screen.
+ * Nurses use these in the Quick Charge screen.
+ * Each user sees only their own templates; stored in the doctor_id column
+ * (which is a plain users FK, role-agnostic).
+ *
+ * GET    /api/templates        - list caller's own templates
+ * POST   /api/templates        - create
+ * PUT    /api/templates/:id    - update (own only)
+ * DELETE /api/templates/:id    - delete (own only)
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { query } from '../db';
-import { authenticate, requireRole } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
 
 const router = Router();
-router.use(authenticate);
-router.use(requireRole('doctor', 'admin'));
+router.use(authenticate); // any logged-in role
+
+const itemSchema = z.object({
+  inventory_item_id: z.string().uuid(),
+  item_name: z.string(),
+  quantity_requested: z.number().positive(),
+  unit: z.string(),
+});
 
 const templateSchema = z.object({
   name: z.string().min(1).max(255),
-  items: z.array(z.object({
-    inventory_item_id: z.string().uuid(),
-    item_name: z.string(),
-    quantity_requested: z.number().positive(),
-    unit: z.string(),
-  })).min(1),
+  items: z.array(itemSchema).min(1),
 });
 
+// GET /api/templates — return caller's own templates
 router.get('/', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const result = await query(
@@ -35,12 +42,16 @@ router.get('/', async (req: Request, res: Response, next: NextFunction): Promise
   } catch (err) { next(err); }
 });
 
+// POST /api/templates — create a new template
 router.post('/', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const body = templateSchema.parse(req.body);
     const result = await query(
       `INSERT INTO request_templates (name, doctor_id, items)
-       VALUES ($1, $2, $3) RETURNING *`,
+       VALUES ($1, $2, $3)
+       ON CONFLICT (doctor_id, name)
+       DO UPDATE SET items = EXCLUDED.items, updated_at = NOW()
+       RETURNING *`,
       [body.name, req.user!.id, JSON.stringify(body.items)]
     );
     res.status(201).json(result.rows[0]);
@@ -50,13 +61,15 @@ router.post('/', async (req: Request, res: Response, next: NextFunction): Promis
   }
 });
 
+// PUT /api/templates/:id — update own template
 router.put('/:id', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const body = templateSchema.partial().parse(req.body);
     const result = await query(
-      `UPDATE request_templates SET
-         name  = COALESCE($1, name),
-         items = COALESCE($2, items)
+      `UPDATE request_templates
+       SET name  = COALESCE($1, name),
+           items = COALESCE($2, items),
+           updated_at = NOW()
        WHERE id = $3 AND doctor_id = $4
        RETURNING *`,
       [body.name ?? null, body.items ? JSON.stringify(body.items) : null, req.params.id, req.user!.id]
@@ -69,6 +82,7 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction): Prom
   }
 });
 
+// DELETE /api/templates/:id — delete own template
 router.delete('/:id', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const result = await query(

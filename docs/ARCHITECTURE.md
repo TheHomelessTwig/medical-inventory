@@ -1,6 +1,6 @@
-# MedInventory — Architecture Reference
+# S.H.I.T. — Architecture Reference
 
-This document describes the internal design of MedInventory in enough detail for a developer to understand, modify, or extend any part of the system.
+Internal design of S.H.I.T. in enough detail for a developer to understand, modify, or extend any part of the system.
 
 ---
 
@@ -13,7 +13,9 @@ This document describes the internal design of MedInventory in enough detail for
 5. [API Reference](#api-reference)
 6. [Frontend Architecture](#frontend-architecture)
 7. [Stock Safety (Concurrency)](#stock-safety-concurrency)
-8. [Notification System](#notification-system)
+8. [Email System](#email-system)
+9. [Notification System](#notification-system)
+10. [PWA & Service Worker](#pwa--service-worker)
 
 ---
 
@@ -41,75 +43,66 @@ This document describes the internal design of MedInventory in enough detail for
 
 ### Key design decisions
 
-**Single port, nginx proxy** — All traffic enters on port 3000. nginx serves the pre-built React SPA for `GET /*` and proxies `POST|GET|PUT|DELETE /api/*` to the backend container. This means the frontend JavaScript never needs to know the server IP — it uses relative URLs (`/api/inventory`). A browser on any device on the network connects to `http://<server-ip>:3000` and everything works without reconfiguration.
-
-**No ORM** — The backend uses raw `pg` queries. This makes SQL visible and debuggable, avoids N+1 magic, and allows PostgreSQL-specific features (generated columns, `SELECT FOR UPDATE`, sequences).
-
-**PostgreSQL only** — The schema uses UUID primary keys (`gen_random_uuid()`), a `GENERATED ALWAYS AS STORED` column for stocktake variance, `TIMESTAMPTZ` for all timestamps, and sequences for human-readable reference numbers. These are PostgreSQL-specific and intentionally so.
-
-**Token rotation** — Every successful token refresh issues a new refresh token and invalidates the old one. Compromised refresh tokens are detected on the next use.
+- **Single port, nginx proxy** — All traffic enters port 3000. nginx serves the pre-built SPA for `GET /*` and proxies `/api/*` to the backend. The frontend uses relative URLs so it works from any device IP without reconfiguration.
+- **No ORM** — Raw `pg` queries. SQL is visible, debuggable, and uses PostgreSQL-specific features.
+- **PostgreSQL only** — UUID PKs, `GENERATED ALWAYS AS STORED` columns, sequences for human-readable reference numbers, `SELECT FOR UPDATE` row locking.
+- **Token rotation** — Every refresh issues a new refresh token and invalidates the old one. Compromised tokens are detected on next use.
 
 ---
 
 ## Request Lifecycle
 
-### A browser request to `GET /api/inventory`
-
 ```
-1. Browser sends:
-   GET /api/inventory
+1. Browser: GET /api/inventory
    Authorization: Bearer <access_token>
 
-2. nginx receives on :3000, matches /api/* proxy rule
-   → forwards to http://backend:4000/api/inventory
+2. nginx → proxies to backend:4000/api/inventory
 
-3. Express router matches GET /api/inventory
-   → authenticate middleware runs:
-      a. Reads Authorization header
-      b. Verifies JWT signature against JWT_SECRET
-      c. Checks token type === 'access'
-      d. Queries users table: SELECT id,email,name,role,is_active
-      e. Confirms user is active and not locked
-      f. Attaches req.user = { id, email, name, role }
-   → route handler runs:
-      a. Reads query params (page, limit, search, category, ...)
-      b. Builds parameterised SQL with WHERE conditions
-      c. Executes COUNT query (for pagination total)
-      d. Executes data query with LIMIT/OFFSET
-      e. Returns JSON
+3. Express → authenticate middleware:
+   a. Reads Authorization header
+   b. Verifies JWT against JWT_SECRET
+   c. Checks token type === 'access'
+   d. Queries users table: confirms active, not locked
+   e. Attaches req.user = { id, email, name, role }
 
-4. Express sends response → nginx forwards to browser
+4. Route handler:
+   a. Reads query params
+   b. Builds parameterised SQL
+   c. Executes queries
+   d. Returns JSON
+
+5. If access token is expired (401):
+   a. Axios interceptor catches 401
+   b. Sends POST /api/auth/refresh
+   c. Issues new access + refresh tokens
+   d. Retries original request with new token
+   e. If refresh also fails → logout + /login
 ```
 
-### Token refresh flow
+### 2FA login flow
 
 ```
-1. Access token expires (15 min)
-2. Browser makes any API request → receives 401
-3. axios interceptor in client.ts catches 401
-4. Sends POST /api/auth/refresh with cookie/stored refresh token
-5. Backend:
-   a. Hashes the provided token
-   b. Looks up hash in refresh_tokens table
-   c. Checks expiry
-   d. Issues new access token + new refresh token
-   e. Invalidates old refresh token (DELETE)
-6. Interceptor retries the original failed request with new token
-7. If refresh also fails → logout + redirect to /login
+1. POST /api/auth/login  → credentials valid + totp_enabled=true
+   → Returns { requires_totp: true, totp_session: "<2-min JWT>" }
+
+2. Browser shows TOTP input step
+
+3. POST /api/auth/totp/complete { totp_session, code }
+   → Verifies TOTP code against stored secret
+   → Returns full { accessToken, refreshToken, user }
 ```
 
 ---
 
 ## Authentication & Authorisation
 
-### Middleware stack (`backend/src/middleware/auth.ts`)
+### Middleware
 
 ```typescript
-authenticate          // Verifies JWT, attaches req.user — used on all /api routes
-requireRole(...roles) // Checks req.user.role is in the allowed list — 403 otherwise
+authenticate          // Verifies JWT, attaches req.user — required on all /api routes
+requireRole(...roles) // Checks req.user.role — 403 if not in list
 requireAdmin          // Shorthand: requireRole('admin')
 requireAdminOrNurse   // Shorthand: requireRole('admin', 'nurse')
-requireAnyRole        // Shorthand: requireRole('admin', 'doctor', 'nurse')
 ```
 
 ### Role capability matrix
@@ -118,341 +111,208 @@ requireAnyRole        // Shorthand: requireRole('admin', 'doctor', 'nurse')
 |---|:---:|:---:|:---:|
 | `GET /api/inventory` | ✓ | ✓ | ✓ |
 | `POST/PUT/DELETE /api/inventory` | ✓ | ✗ | ✗ |
-| `GET /api/requests` | ✓ (all) | ✓ (own only) | ✓ (all) |
+| `PATCH /api/inventory/bulk` | ✓ | ✗ | ✗ |
+| `POST /api/inventory/:id/adjust` (wastage) | ✓ | ✗ | ✓ |
+| `GET /api/requests` | ✓ all | ✓ own | ✓ all |
 | `POST /api/requests` | ✓ | ✓ | ✗ |
 | `POST /api/requests/quick-charge` | ✓ | ✗ | ✓ |
 | `PUT /api/requests/:id/accept` | ✓ | ✗ | ✓ |
 | `POST /api/requests/:id/fulfill` | ✓ | ✗ | ✓ |
+| `GET /api/templates` | ✓ own | ✓ own | ✓ own |
+| `POST/PUT/DELETE /api/templates` | ✓ | ✓ | ✓ |
+| `GET /api/returns` | ✓ | ✗ | ✓ |
+| `POST /api/returns` | ✓ | ✗ | ✓ |
+| `POST /api/returns/:id/confirm` | ✓ | ✗ | ✗ |
+| `GET /api/budgets` | ✓ | ✗ | ✗ |
+| `PUT /api/budgets` | ✓ | ✗ | ✗ |
 | `GET /api/stocktakes` | ✓ | ✗ | ✓ |
-| `POST /api/stocktakes` | ✓ | ✗ | ✓ |
 | `GET /api/invoices` | ✓ | ✗ | ✗ |
-| `POST /api/invoices` | ✓ | ✗ | ✗ |
-| `GET /api/reports/*` | ✓ | ✓ | ✗ |
+| `GET /api/invoices/xero-export` | ✓ | ✗ | ✗ |
+| `GET /api/reports/*` | ✓ | ✓* | ✗ |
+| `GET /api/reports/wastage` | ✓ | ✓ | ✗ |
 | `GET /api/users` | ✓ | ✗ | ✗ |
-| `GET /api/audit` | ✓ | ✗ | ✗ |
-| `GET /api/system/version` | ✓ | ✓ | ✓ |
 | `GET /api/system/status` | ✓ | ✗ | ✗ |
-
-### Account lockout
-
-```sql
--- On failed login:
-UPDATE users SET failed_login_attempts = failed_login_attempts + 1
-WHERE email = $1
-
--- If attempts >= MAX_LOGIN_ATTEMPTS:
-UPDATE users SET locked_until = NOW() + INTERVAL '15 minutes'
-
--- On successful login:
-UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_login = NOW()
-```
+| `GET /api/auth/totp/setup` | ✓ | ✓ | ✓ |
 
 ---
 
 ## Database Schema
 
-### Entity Relationship Overview
+### All tables
 
-```
-users ──────────────────────────────────────────────────────┐
-  │                                                         │
-  ├─ created_by ──▶ inventory_items ──▶ inventory_batches  │
-  │                       │                                 │
-  │                       │                                 │
-  ├─ doctor_id ──▶ stock_requests ◀── initiated_by ────────┤
-  │   initiated_by      │    │                             │
-  │                      │    └── stock_request_items      │
-  │                      │                                 │
-  ├─ nurse_id ──▶ stock_fulfillments ◀── request_id ───────┤
-  │                      │
-  │                      └── stock_fulfillment_items
-  │
-  ├─ adjusted_by ──▶ stock_adjustments
-  │
-  ├─ created_by ──▶ stocktakes
-  │                      │
-  │                      └── stocktake_items
-  │
-  ├─ entered_by ──▶ invoices ──▶ invoice_items
-  │
-  └─ user_id ──▶ audit_log
-```
+| Table | Purpose |
+|---|---|
+| `users` | Accounts with role, lockout state, TOTP secret |
+| `refresh_tokens` | Hashed refresh tokens with expiry |
+| `categories` | Item categories with colour |
+| `suppliers` | Supplier contact info |
+| `inventory_items` | Stock items with prices, thresholds, dispense step |
+| `inventory_batches` | Lot/batch tracking with expiry |
+| `stock_requests` | Doctor → nurse requests (includes quick-charges) |
+| `stock_request_items` | Line items on a request |
+| `stock_fulfillments` | Nurse fulfilment records |
+| `stock_fulfillment_items` | What was actually dispensed |
+| `stock_adjustments` | All stock movements (wastage, corrections, returns…) |
+| `stock_returns` | Returns to supplier (header) |
+| `stock_return_items` | Items on a return |
+| `request_templates` | Saved order/charge baskets (all roles) |
+| `stocktakes` | Stocktake sessions |
+| `stocktake_items` | Per-item counts with generated variance |
+| `invoices` | Supplier invoices |
+| `invoice_items` | Invoice line items |
+| `category_budgets` | Monthly spend budgets per category |
+| `audit_log` | Immutable action history |
 
-### Tables
+### Key columns
 
 #### `users`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | `gen_random_uuid()` |
-| email | VARCHAR(255) UNIQUE | Login identifier |
-| name | VARCHAR(255) | Display name |
-| password_hash | VARCHAR(255) | bcrypt, 12 rounds |
-| role | VARCHAR(50) | `admin`, `doctor`, `nurse` |
-| is_active | BOOLEAN | Soft delete |
-| failed_login_attempts | INTEGER | Incremented on bad login |
-| locked_until | TIMESTAMPTZ | NULL if not locked |
-| last_login | TIMESTAMPTZ | |
-| must_change_password | BOOLEAN | Forces password change on next login |
-| created_at / updated_at | TIMESTAMPTZ | `updated_at` maintained by trigger |
-
-#### `refresh_tokens`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | |
-| user_id | UUID FK → users | Cascades on delete |
-| token_hash | VARCHAR(255) | SHA-256 of the raw token |
-| expires_at | TIMESTAMPTZ | Checked on every refresh |
-
-Indexed on `user_id` and `token_hash`.
-
-#### `categories`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | |
-| name | VARCHAR(255) UNIQUE | |
-| description | TEXT | |
-| color | VARCHAR(7) | Hex colour e.g. `#6366f1` |
-
-#### `suppliers`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | |
-| name / contact_name | VARCHAR | |
-| email / phone / address | VARCHAR / TEXT | |
-| is_active | BOOLEAN | Soft archive |
+| Column | Notes |
+|---|---|
+| `totp_secret` | Base32 secret for TOTP (NULL if 2FA not set up) |
+| `totp_enabled` | Whether 2FA is active for this account |
+| `failed_login_attempts` | Incremented on bad password; reset on success |
+| `locked_until` | NULL if not locked; set to future time on lockout |
 
 #### `inventory_items`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | |
-| name | VARCHAR(255) | |
-| category_id | UUID FK → categories | SET NULL on delete |
-| supplier_id | UUID FK → suppliers | SET NULL on delete |
-| sku / barcode | VARCHAR | Unique indexes |
-| unit | VARCHAR(50) | `unit`, `mL`, `tablet`, etc. |
-| quantity_on_hand | DECIMAL(10,3) | Decremented on each fulfilment |
-| quantity_reserved | DECIMAL(10,3) | Incremented when request created, released on fulfil/cancel |
-| reorder_threshold | DECIMAL(10,3) | Alert when `quantity_on_hand ≤ this` |
-| internal_price | DECIMAL(10,4) | Billing price per unit |
-| supplier_cost | DECIMAL(10,4) | Purchase cost per unit |
-| gst_applicable / gst_rate | BOOLEAN / DECIMAL | Tax handling |
-| storage_location | VARCHAR(255) | Free-text location |
-| requires_batch_tracking | BOOLEAN | If true, batches must be specified on fulfilment |
-| dispense_unit | DECIMAL(10,3) DEFAULT 1 | Step size for +/− buttons in ordering screens |
-| is_active | BOOLEAN | Soft archive |
-
-#### `inventory_batches`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | |
-| inventory_item_id | UUID FK → inventory_items | Cascades |
-| batch_number | VARCHAR(100) | |
-| lot_number / expiry_date | VARCHAR / DATE | |
-| quantity | DECIMAL(10,3) | Decremented on fulfilment |
+| Column | Notes |
+|---|---|
+| `dispense_unit` | Step size for +/− buttons on POS screens (default: 1) |
+| `quantity_on_hand` | Live stock level; decremented by transactions with `FOR UPDATE` |
+| `quantity_reserved` | Advisory; incremented when request created, released on fulfil/cancel |
 
 #### `stock_requests`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | |
-| request_number | VARCHAR(50) UNIQUE | `REQ-001000` or `QC-001000` |
-| doctor_id | UUID FK → users | Doctor associated with the request |
-| patient_name / patient_ref | VARCHAR | Optional patient information |
-| status | VARCHAR(50) | `pending`, `accepted`, `in_progress`, `fulfilled`, `partially_fulfilled`, `cancelled` |
-| priority | VARCHAR(20) | `low`, `normal`, `high`, `urgent` |
-| is_quick_charge | BOOLEAN DEFAULT false | Set true for nurse-initiated charges |
-| initiated_by | UUID FK → users | The nurse who created a quick-charge (NULL for doctor requests) |
-| accepted_by / accepted_at | UUID / TIMESTAMPTZ | Nurse who accepted |
-| cancelled_by / cancelled_at / cancellation_reason | — | If cancelled |
-
-#### `stock_request_items`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | |
-| request_id | UUID FK → stock_requests | Cascades |
-| inventory_item_id | UUID FK → inventory_items | |
-| quantity_requested | DECIMAL(10,3) | |
-
-#### `stock_fulfillments`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | |
-| request_id | UUID FK → stock_requests | |
-| nurse_id | UUID FK → users | Nurse who fulfilled |
-| fulfillment_number | VARCHAR(50) UNIQUE | `FUL-001000` |
-| total_charge | DECIMAL(10,4) | Sum of all line charges |
-| completed_at | TIMESTAMPTZ | |
-
-#### `stock_fulfillment_items`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | |
-| fulfillment_id | UUID FK → stock_fulfillments | Cascades |
-| request_item_id | UUID FK → stock_request_items | NULL for quick-charge items |
-| inventory_item_id | UUID FK → inventory_items | |
-| batch_id | UUID FK → inventory_batches | Optional |
-| quantity_used | DECIMAL(10,3) | |
-| internal_price / total_charge | DECIMAL | Calculated at time of fulfilment |
-| is_substitution | BOOLEAN | Different item from what was requested |
-| substitution_reason | TEXT | Required when is_substitution = true |
+| Column | Notes |
+|---|---|
+| `is_quick_charge` | `true` for nurse-initiated charges |
+| `initiated_by` | Nurse user ID for quick charges (NULL for doctor requests) |
+| `request_number` | `REQ-001000` for doctor requests, `QC-001000` for quick charges |
 
 #### `stock_adjustments`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | |
-| inventory_item_id | UUID FK | |
-| adjusted_by | UUID FK → users | |
-| adjustment_type | VARCHAR(50) | `increase`, `decrease`, `correction`, `damage`, `expiry`, `return`, `stocktake`, `other` |
-| quantity_before / quantity_change / quantity_after | DECIMAL | |
-| reason | TEXT | Required |
-| reference_type | VARCHAR(50) | `fulfillment`, `quick_charge`, `stocktake`, etc. |
-
-#### `stocktakes`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | |
-| name | VARCHAR(255) | |
-| type | VARCHAR(50) | `full`, `cycle`, `partial` |
-| scope_category_id / scope_location | — | Filters for partial stocktakes |
-| status | VARCHAR(50) | `in_progress`, `completed`, `cancelled` |
-| total_items / total_variance | INTEGER / DECIMAL | Computed on completion |
+| Column | Notes |
+|---|---|
+| `adjustment_type` | `increase`, `decrease`, `correction`, `damage`, `expiry`, `return`, `stocktake`, `wastage`, `other` |
+| `wastage_reason` | `dropped`, `contaminated`, `opened_unused`, `incorrect_dose`, `expired_opened`, `other` (NULL unless type=wastage) |
 
 #### `stocktake_items`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | |
-| stocktake_id | UUID FK → stocktakes | Cascades |
-| inventory_item_id | UUID FK | |
-| expected_quantity | DECIMAL | Snapshot of `quantity_on_hand` at session creation |
-| counted_quantity | DECIMAL | Entered by staff during the count |
-| variance | DECIMAL | **GENERATED ALWAYS AS** `counted_quantity - expected_quantity` STORED |
-| adjustment_applied | BOOLEAN | Has the variance been applied as a stock adjustment? |
+```sql
+variance DECIMAL(10,3) GENERATED ALWAYS AS (
+  counted_quantity - expected_quantity
+) STORED
+```
+PostgreSQL computes variance automatically; it cannot be written to directly.
 
-The `variance` column is a PostgreSQL `GENERATED ALWAYS AS ... STORED` column — the database computes it automatically and it cannot be written to directly.
+#### `request_templates`
+```sql
+doctor_id UUID NOT NULL REFERENCES users(id)  -- stores the owning user's ID regardless of role
+items JSONB  -- [{ inventory_item_id, item_name, quantity_requested, unit }, ...]
+```
+Despite the column name, `doctor_id` holds any user's ID — nurses use this table too.
 
-#### `invoices` and `invoice_items`
-Standard supplier invoice model. An invoice is `posted` when its line items have been confirmed and stock levels updated.
-
-#### `audit_log`
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID PK | |
-| user_id / user_name / user_role | — | Denormalised for permanent record |
-| action | VARCHAR(100) | e.g. `INVENTORY_CREATED`, `REQUEST_FULFILLED` |
-| entity_type / entity_id / entity_name | VARCHAR | What was affected |
-| old_values / new_values | JSONB | Full before/after state |
-| ip_address / user_agent | VARCHAR / TEXT | |
-| created_at | TIMESTAMPTZ | |
-
-No `updated_at` — audit records are immutable.
+#### `category_budgets`
+```sql
+period_month DATE  -- always stored as first day of month: 2026-05-01
+UNIQUE (category_id, period_month)
+```
 
 ### Sequences
 
 ```sql
-request_number_seq  -- Generates REQ-001000, REQ-001001, ...
-fulfillment_number_seq -- Generates FUL-001000, FUL-001001, ...
+request_number_seq    -- REQ-001000, REQ-001001 (doctors) / QC-001000 (quick charges)
+fulfillment_number_seq -- FUL-001000, FUL-001001
+return_number_seq     -- RET-001000, RET-001001
 ```
-
-Both start at 1000. Quick-charge requests use the same `request_number_seq` but with the prefix `QC-` instead of `REQ-`.
-
-### Triggers
-
-An `updated_at` trigger fires on every UPDATE for these tables: `users`, `categories`, `suppliers`, `inventory_items`, `inventory_batches`, `stock_requests`, `invoices`.
 
 ---
 
 ## API Reference
 
-Base URL: `http://<host>:3000/api`
-
-All routes except `POST /auth/login` and `POST /auth/refresh` require `Authorization: Bearer <token>`.
+Base URL: `http://<host>:3000/api`  
+All routes except `POST /auth/login`, `POST /auth/refresh`, and `GET /health` require `Authorization: Bearer <token>`.
 
 ### Auth
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| POST | `/auth/login` | None | `{ email, password }` → `{ accessToken, user }` + sets refresh token |
-| POST | `/auth/refresh` | Refresh token | Issues new access + refresh tokens |
-| POST | `/auth/logout` | Access token | Invalidates refresh token |
-| GET | `/auth/me` | Access token | Returns current user info |
-| PUT | `/auth/change-password` | Access token | `{ currentPassword, newPassword }` |
+| Method | Path | Description |
+|---|---|---|
+| POST | `/auth/login` | Password login. Returns `{ accessToken, refreshToken, user }` or `{ requires_totp: true, totp_session }` |
+| POST | `/auth/totp/complete` | Step 2 for 2FA login: `{ totp_session, code }` → full tokens |
+| POST | `/auth/refresh` | Issue new tokens |
+| POST | `/auth/logout` | Invalidate refresh token |
+| GET | `/auth/me` | Current user info |
+| PUT | `/auth/profile` | Update own name / email |
+| POST | `/auth/change-password` | Change own password |
+| GET | `/auth/totp/setup` | Generate TOTP secret + QR code data URL |
+| POST | `/auth/totp/verify` | Confirm code → enable 2FA |
+| DELETE | `/auth/totp/disable` | Disable 2FA (requires current code) |
 
 ### Inventory
 
-| Method | Path | Auth | Description |
+| Method | Path | Role | Description |
 |---|---|---|---|
 | GET | `/inventory` | Any | List with pagination, search, filters |
-| GET | `/inventory/export` | Admin | CSV download of all items |
+| GET | `/inventory/export` | Admin | CSV download |
 | POST | `/inventory/import` | Admin | CSV upload |
-| GET | `/inventory/:id` | Any | Single item with batches + recent movements |
+| PATCH | `/inventory/bulk` | Admin | Bulk archive/activate/reassign: `{ ids[], action, category_id? }` |
+| GET | `/inventory/:id` | Any | Single item with batches + movements |
 | POST | `/inventory` | Admin | Create item |
 | PUT | `/inventory/:id` | Admin | Update item |
-| DELETE | `/inventory/:id` | Admin | Archive item (soft delete) |
-| POST | `/inventory/:id/adjust` | Admin | Manual stock adjustment |
-| GET | `/inventory/:id/batches` | Any | List batches for an item |
-
-**GET /inventory query parameters:**
-
-| Param | Default | Description |
-|---|---|---|
-| page | 1 | |
-| limit | 50 | Max 200 |
-| search | — | Searches name, SKU, barcode, description |
-| category | — | UUID of category |
-| low_stock | — | `true` to show only below threshold |
-| expiring | — | Days ahead (e.g. `30`) |
-| active | `true` | `true`, `false`, or `all` |
-| sort | `name` | `name`, `sku`, `quantity_on_hand`, `internal_price`, `created_at` |
-| order | `asc` | `asc` or `desc` |
+| DELETE | `/inventory/:id` | Admin | Archive (soft delete) |
+| POST | `/inventory/:id/adjust` | Admin/Nurse | Stock adjustment (includes `adjustment_type: 'wastage'` + `wastage_reason`) |
+| GET | `/inventory/:id/batches` | Any | List batches sorted by expiry (FEFO order) |
+| POST | `/inventory/:id/batches` | Admin/Nurse | Add batch |
 
 ### Requests
 
 | Method | Path | Role | Description |
 |---|---|---|---|
-| GET | `/requests` | Any | List requests. Doctors see only their own. Supports `?since=<ISO>` for notification polling |
-| GET | `/requests/:id` | Any | Full detail with items + fulfilments |
-| POST | `/requests` | Doctor/Admin | Create a new request |
-| POST | `/requests/quick-charge` | Nurse/Admin | Create + immediately fulfil in one step |
-| PUT | `/requests/:id/accept` | Nurse/Admin | Move to `accepted` status |
-| POST | `/requests/:id/fulfill` | Nurse/Admin | Create a fulfilment record |
+| GET | `/requests` | Any | List. Doctors see own only. Supports `?since=<ISO>` for notification polling |
+| GET | `/requests/patient-ledger` | Any | `?patient_ref=X` — all charges for a patient |
+| GET | `/requests/:id` | Any | Detail with items + fulfilments |
+| POST | `/requests` | Doctor/Admin | Create pending request |
+| POST | `/requests/quick-charge` | Nurse/Admin | Create + immediately fulfil: `{ doctor_id, patient_name, patient_ref, notes, items[] }` |
+| PUT | `/requests/:id/accept` | Nurse/Admin | Move to accepted |
+| POST | `/requests/:id/fulfill` | Nurse/Admin | Create fulfilment record |
 | PUT | `/requests/:id/cancel` | Doctor/Admin | Cancel with reason |
 | GET | `/requests/:id/receipt` | Any | Full receipt with all fulfilments |
 
-**POST /requests body:**
-```json
-{
-  "patient_name": "Jane Smith",
-  "patient_ref": "MRN-12345",
-  "priority": "normal",
-  "notes": "For room 3",
-  "items": [
-    { "inventory_item_id": "uuid", "quantity_requested": 5 }
-  ]
-}
-```
+### Templates
 
-**POST /requests/quick-charge body:**
-```json
-{
-  "doctor_id": "uuid",
-  "patient_name": "Jane Smith",
-  "patient_ref": "MRN-12345",
-  "notes": null,
-  "items": [
-    { "inventory_item_id": "uuid", "quantity_used": 2 }
-  ]
-}
-```
+| Method | Path | Role | Description |
+|---|---|---|---|
+| GET | `/templates` | Any | Caller's own templates |
+| POST | `/templates` | Any | Create (or upsert by name) |
+| PUT | `/templates/:id` | Any | Update own template |
+| DELETE | `/templates/:id` | Any | Delete own template |
+
+Items schema: `[{ inventory_item_id, item_name, quantity_requested, unit }]`
+
+### Returns
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| GET | `/returns` | Admin/Nurse | List returns |
+| GET | `/returns/:id` | Admin/Nurse | Detail with items |
+| POST | `/returns` | Admin/Nurse | Create draft |
+| PUT | `/returns/:id` | Admin/Nurse | Update draft |
+| POST | `/returns/:id/confirm` | Admin | Confirm: restore stock + create adjustment records |
+| DELETE | `/returns/:id` | Admin | Delete draft |
+
+### Budgets
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| GET | `/budgets` | Admin | `?month=YYYY-MM` — spend vs budget per category |
+| PUT | `/budgets` | Admin | Upsert: `{ category_id, period_month: "YYYY-MM", budget_amount }` |
 
 ### Stocktakes
 
 | Method | Path | Role | Description |
 |---|---|---|---|
 | GET | `/stocktakes` | Admin/Nurse | List sessions |
-| POST | `/stocktakes` | Admin/Nurse | Create session (snapshots current stock quantities) |
-| GET | `/stocktakes/:id` | Admin/Nurse | Full session with all items. `?format=csv` returns CSV |
-| PUT | `/stocktakes/:id/item/:itemId` | Admin/Nurse | Record counted quantity for one item |
-| POST | `/stocktakes/:id/complete` | Admin/Nurse | Complete session, optionally apply adjustments |
-| PUT | `/stocktakes/:id/cancel` | Admin/Nurse | Cancel session |
+| POST | `/stocktakes` | Admin/Nurse | Create (snapshots current quantities) |
+| GET | `/stocktakes/:id` | Admin/Nurse | Full session. `?format=csv` returns CSV |
+| PUT | `/stocktakes/:id/item/:itemId` | Admin/Nurse | Record counted quantity |
+| POST | `/stocktakes/:id/complete` | Admin/Nurse | Complete; optionally apply adjustments |
+| PUT | `/stocktakes/:id/cancel` | Admin/Nurse | Cancel |
 
 ### Invoices
 
@@ -461,34 +321,31 @@ All routes except `POST /auth/login` and `POST /auth/refresh` require `Authoriza
 | GET | `/invoices` | Admin | List with pagination |
 | POST | `/invoices` | Admin | Create with line items |
 | GET | `/invoices/:id` | Admin | Full detail |
-| PUT | `/invoices/:id` | Admin | Update header fields |
-| POST | `/invoices/:id/post` | Admin | Post — updates stock levels from line items |
-| DELETE | `/invoices/:id` | Admin | Delete if not posted |
+| PUT | `/invoices/:id` | Admin | Update header |
+| POST | `/invoices/:id/post` | Admin | Post: update stock from line items |
+| DELETE | `/invoices/:id` | Admin | Delete if unposted |
+| GET | `/invoices/xero-export` | Admin | Xero bank transactions CSV (`?from=&to=`) |
 
 ### Reports
 
 | Method | Path | Role | Description |
 |---|---|---|---|
-| GET | `/reports/dashboard` | Any | KPI stats for the dashboard |
-| GET | `/reports/usage` | Admin/Doctor | Usage by item, with optional `?group_by=nurse&period=week&from=&to=` |
-| GET | `/reports/invoices` | Admin | Invoice CSV export |
-
-### Users
-
-| Method | Path | Role | Description |
-|---|---|---|---|
-| GET | `/users` | Admin | List users |
-| POST | `/users` | Admin | Create user |
-| PUT | `/users/:id` | Admin | Update user (role, active status, force password change) |
-| PUT | `/users/:id/reset-password` | Admin | Set a temporary password |
+| GET | `/reports/dashboard` | Any | KPI stats |
+| GET | `/reports/usage` | Admin/Doctor | Usage by item/nurse/doctor with `?group_by=&period=&from=&to=` |
+| GET | `/reports/wastage` | Admin/Doctor | Wastage records with cost; `?format=csv` |
+| GET | `/reports/invoices` | Admin | Invoice line items; `?format=csv` |
+| GET | `/reports/low-stock` | Any | Items below threshold |
+| GET | `/reports/expiring` | Any | Batches expiring within `?days=N` |
+| GET | `/reports/valuation` | Admin | Stock value by category |
+| GET | `/reports/movements` | Admin | Adjustment history |
 
 ### System
 
 | Method | Path | Role | Description |
 |---|---|---|---|
-| GET | `/health` | None | `{ status: "ok", timestamp }` — used by load balancers |
-| GET | `/system/version` | Any | Version from `version.json` |
-| GET | `/system/status` | Admin | Version + uptime + DB size + table count + user count |
+| GET | `/health` | None | `{ status: "ok", timestamp }` |
+| GET | `/system/version` | Any | Version from version.json |
+| GET | `/system/status` | Admin | Version + uptime + DB size + user count |
 
 ---
 
@@ -496,108 +353,179 @@ All routes except `POST /auth/login` and `POST /auth/refresh` require `Authoriza
 
 ### State management
 
-All server state is managed by **TanStack Query** (`useQuery`, `useMutation`). Components never hold server data in local state — they read from the query cache and mutate via mutations that invalidate the relevant cache keys on success.
+All server state via **TanStack Query**. Components never hold server data in local state.
 
 ```typescript
-// Pattern used throughout:
 const { data, isLoading } = useQuery({
-  queryKey: ['inventory', filters],   // cache key — changes trigger refetch
+  queryKey: ['inventory', filters],
   queryFn: () => api.get('/inventory', { params: filters }).then(r => r.data),
-  staleTime: 30_000,                   // consider fresh for 30 seconds
+  staleTime: 30_000,
 });
 
 const mutation = useMutation({
-  mutationFn: (id: string) => api.delete(`/inventory/${id}`),
-  onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: ['inventory'] });  // bust cache
-    toast.success('Item deleted');
-  },
+  mutationFn: (id) => api.delete(`/inventory/${id}`),
+  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inventory'] }),
 });
 ```
 
-### Auth context (`AuthContext.tsx`)
+### Context providers (in mount order)
 
-Stores `{ user, accessToken }` in React state and in `sessionStorage`. The axios interceptor in `client.ts` reads the access token from state for every request, and automatically calls `POST /auth/refresh` when a 401 is received.
+```
+ThemeProvider       ← dark mode, accent colour, notification sound (localStorage)
+  AuthProvider      ← user state, accessToken, login/logout
+    App             ← router, pages
+```
 
-### Axios client (`api/client.ts`)
+### Key hooks
 
-- Base URL is empty (`""`) so all requests go to `GET /api/...` relative to the current page origin
-- Request interceptor: attaches `Authorization: Bearer <token>`
-- Response interceptor: on 401, queues the original request, calls the refresh endpoint, retries with the new token. If refresh fails, calls `logout()` and redirects to `/login`.
-
-### Routing
-
-`App.tsx` uses React Router v6 nested routes. The `ProtectedRoute` component:
-1. Shows a spinner while `isLoading` (initial auth check)
-2. Redirects to `/login` if no user
-3. Redirects to `/` if the user's role is not in the allowed `roles` array
-4. Redirects to `/change-password` if `must_change_password` is true
-
-### Component conventions
-
-| Pattern | Example |
+| Hook | Purpose |
 |---|---|
-| Page components in `pages/` | `Inventory.tsx`, `Reports.tsx` |
-| Reusable UI in `components/` | `Modal.tsx`, `Badge.tsx` |
-| Custom hooks in `hooks/` | `useIdleTimeout.ts`, `useNotifications.ts` |
-| All API types in `types/index.ts` | `InventoryItem`, `StockRequest` |
-| Error messages via `getErrorMessage(err)` | Handles Axios + Zod + plain Error |
-| Toasts via `react-hot-toast` | `toast.success(...)`, `toast.error(...)` |
+| `useAuth()` | Access user, login, logout, refreshUser |
+| `useTheme()` | Dark mode toggle, accent colour, notification sound toggle |
+| `useBarcodeScan({ onScan })` | Detects USB scanner input; calls onScan(code) |
+| `useKeyboardShortcuts(map)` | /, N, Esc, ? shortcuts; skips when typing |
+| `useIdleTimeout(...)` | 28-min warning, 30-min auto-logout |
+| `useNotifications()` | Polls /api/requests every 30s; plays Web Audio chime |
+| `useDebounce(value, ms)` | Debounces search input for inventory page |
+
+### Barcode scanner detection
+
+`useBarcodeScan` listens on `keydown` globally. It buffers keystrokes and fires `onScan(code)` when:
+- An `Enter` key is received after ≥3 buffered characters
+- The inter-keystroke gap is < 50ms (scanner speed vs human typing speed)
+- The current focus is not inside an `<input>`, `<textarea>`, or `<select>`
+
+### ThemeContext and CSS variables
+
+`ThemeContext` manages three things:
+
+1. **Dark mode** — adds/removes `class="dark"` on `<html>`. Tailwind's `dark:` variants apply automatically.
+2. **Accent colour** — sets CSS custom properties:
+   ```css
+   --accent: #2563eb;
+   --accent-dark: #1d4ed8;
+   --accent-ring: #93c5fd;
+   ```
+   `.btn-primary` and sidebar active nav items use `background-color: var(--accent)`.
+3. **Notification sound** — boolean read by `useNotifications` to decide whether to play the Web Audio chime.
+
+All preferences persist in `localStorage` under keys prefixed with `shit-`.
 
 ---
 
 ## Stock Safety (Concurrency)
 
-Every operation that modifies `quantity_on_hand` runs inside a PostgreSQL transaction with row-level locking to prevent race conditions when two nurses fulfil requests simultaneously.
+Every stock-deducting operation uses `SELECT FOR UPDATE` inside a `withTransaction()` call:
 
 ```sql
--- Pattern used in all stock-deducting endpoints:
 BEGIN;
-  SELECT id, quantity_on_hand FROM inventory_items WHERE id = $1 FOR UPDATE;
-  -- ↑ Acquires exclusive lock on this row for the duration of the transaction
-  -- Any concurrent transaction trying to lock the same row will wait here
+  SELECT id, quantity_on_hand FROM inventory_items
+  WHERE id = $1 FOR UPDATE;   -- exclusive row lock
 
-  UPDATE inventory_items SET quantity_on_hand = quantity_on_hand - $2 WHERE id = $1;
-  -- Stock deduction is safe — no other transaction can read a stale value
+  UPDATE inventory_items
+  SET quantity_on_hand = quantity_on_hand - $2
+  WHERE id = $1;
 
   INSERT INTO stock_adjustments (...) VALUES (...);
-  -- Adjustment record created in the same transaction
 COMMIT;
--- Lock released
+-- Lock released; next waiter proceeds with fresh data
 ```
 
-The `withTransaction` helper in `db.ts` wraps this pattern:
+This prevents two nurses from fulfilling the same request simultaneously and ending up with negative stock.
+
+Returns use the same pattern: `SELECT ... FOR UPDATE` before restoring quantities.
+
+---
+
+## Email System
+
+`backend/src/utils/email.ts` wraps nodemailer with a simple typed API.
+
+### Configuration
+
+If `SMTP_HOST` is not set in `.env`, all email functions are silent no-ops — the app works fine without email configured.
+
+### Transport
 
 ```typescript
-const result = await withTransaction(async (client) => {
-  const row = await client.query('SELECT ... FOR UPDATE', [id]);
-  await client.query('UPDATE ...', [...]);
-  return result;
+const transport = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: parseInt(process.env.SMTP_PORT || '587'),
+  secure: process.env.SMTP_PORT === '465',
+  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  tls: { rejectUnauthorized: false },
 });
-// If any step throws, the transaction is automatically rolled back
 ```
 
-**Reserved quantity** — when a doctor creates a request, `quantity_reserved` is incremented. This doesn't prevent other requests from being created (it's advisory, not enforced), but it gives nurses and admins visibility into "committed" stock.
+### Typed send functions
+
+| Function | When called |
+|---|---|
+| `emailNewRequest(...)` | After `POST /api/requests` — notifies nurses |
+| `emailRequestFulfilled(...)` | After `POST /api/requests/:id/fulfill` — notifies doctor |
+| `emailQuickCharge(...)` | After `POST /api/requests/quick-charge` — notifies doctor |
+| `emailAccountLocked(...)` | When lockout threshold is reached in login route |
+| `emailAfterHoursLogin(...)` | When login hour < 7 or >= 20 (server local time) |
+| `emailWeeklyReport(...)` | Called by scheduled job every Monday 8am |
+
+All functions catch errors and log them — email failures **never throw** into the request handler.
+
+### Scheduled reports (`backend/src/jobs/scheduledReports.ts`)
+
+Started in `index.ts` (not in test environment):
+
+```typescript
+cron.schedule('0 8 * * 1', runWeeklyReport, {
+  timezone: process.env.REPORT_TIMEZONE || 'UTC',
+});
+```
+
+Queries: usage totals for last week + items below reorder threshold → calls `emailWeeklyReport`.
 
 ---
 
 ## Notification System
 
-`useNotifications.ts` runs inside `Layout.tsx` so it's active on every page while logged in.
+`useNotifications.ts` runs inside `Layout.tsx` and polls every 30 seconds.
 
 ```
-Every 30 seconds:
-  GET /api/requests?status=<role-appropriate>&since=<lastSeenTimestamp>
+Role: nurse   → GET /api/requests?status=pending&since=<lastSeen>
+Role: doctor  → GET /api/requests?status=fulfilled&since=<lastSeen>
+Role: admin   → GET /api/requests?status=pending&since=<lastSeen>
 
-  If response.total > 0:
-    1. Play two-tone chime via Web Audio API (synthesised, no file)
-    2. Show react-hot-toast with dark coloured background
-    3. Advance lastSeenTimestamp to now()
-
-Role logic:
-  nurse  → status=pending  (new doctor requests waiting)
-  doctor → status=fulfilled (quick-charge receipts from nurses)
-  admin  → status=pending   (same as nurse — sees all pending)
+If response.total > 0 AND notificationSound is enabled:
+  1. Play two-tone chime via Web Audio API (synthesised, no file)
+  2. Show react-hot-toast with coloured background
+  3. Advance lastSeen to now
 ```
 
-The `since` query parameter filters requests by `created_at > since`, so only genuinely new records trigger notifications. The first poll after login is suppressed (the `initializedRef` guard) to avoid alerting on existing items.
+The `since` query param filters `WHERE sr.created_at > $1` — only genuinely new records trigger notifications. The first poll after login is suppressed (initialisation guard) to avoid alerting on pre-existing items.
+
+---
+
+## PWA & Service Worker
+
+`vite-plugin-pwa` generates a Workbox service worker at build time.
+
+### Caching strategy
+
+| URL pattern | Strategy | Rationale |
+|---|---|---|
+| `/api/*` | NetworkFirst (10s timeout) | Data must be fresh; fall back to cache if offline |
+| Static assets (`*.js`, `*.css`, `*.png`) | CacheFirst (precached) | Content-hashed filenames change on each deploy |
+| HTML navigation | NetworkFirst | Always fetch fresh shell; serve cached on offline |
+
+### Manifest shortcuts
+
+The `manifest.json` includes app shortcuts visible when long-pressing the home screen icon:
+- **Quick Charge** → `/pos`
+- **New Order** → `/order`
+
+### Install prompt
+
+The PWA is installable on:
+- Chrome/Edge desktop: address bar install icon
+- Android Chrome: "Add to Home Screen" in menu
+- iOS Safari: share button → "Add to Home Screen"
+
+The app runs in `display: standalone` mode (no browser chrome) once installed.
