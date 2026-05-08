@@ -42,7 +42,7 @@ const Login: React.FC = () => {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg shadow-blue-500/30">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 shadow-lg" style={{ backgroundColor: 'var(--accent)' }}>
             <Stethoscope size={32} className="text-white" />
           </div>
           <h1 className="text-5xl font-black text-white tracking-widest">S.H.I.T.</h1>

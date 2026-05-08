@@ -5,8 +5,9 @@ import {
   Tag, Truck, Plus, Edit2, Trash2, Save, X,
   Palette, Building2, Phone, Mail, MapPin,
   Server, Database, Clock, RefreshCw, Copy, Check,
-  Terminal, AlertTriangle, Wifi
+  Terminal, AlertTriangle, Wifi, Paintbrush
 } from 'lucide-react';
+import { useTheme, ACCENT_PRESETS } from '../context/ThemeContext';
 import { api, getErrorMessage } from '../api/client';
 import { Category, Supplier } from '../types';
 import Modal from '../components/Modal';
@@ -637,6 +638,67 @@ const UpdateGuide: React.FC = () => {
   );
 };
 
+// ─── Clinic-wide theme picker (admin only) ────────────────────────────────────
+const ClinicTheme: React.FC = () => {
+  const { accent, setAccent, accentPresets, mode, toggleMode } = useTheme();
+
+  return (
+    <div className="card p-5 space-y-4">
+      <h3 className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+        <Paintbrush size={16} className="text-indigo-500" /> Clinic Theme
+      </h3>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        Set the accent colour for the whole app. This is stored per-device; each user can also change it on their profile page.
+      </p>
+
+      <div>
+        <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Accent colour</p>
+        <div className="flex flex-wrap gap-2 items-center">
+          {ACCENT_PRESETS.map(preset => (
+            <button
+              key={preset.value}
+              type="button"
+              title={preset.name}
+              onClick={() => setAccent(preset.value)}
+              className={`w-9 h-9 rounded-full border-4 transition-transform hover:scale-110 ${
+                accent === preset.value
+                  ? 'border-slate-900 dark:border-white scale-110'
+                  : 'border-transparent'
+              }`}
+              style={{ backgroundColor: preset.value }}
+            />
+          ))}
+          <label title="Custom colour" className="relative w-9 h-9 rounded-full border-4 border-dashed border-slate-300 dark:border-slate-600 hover:border-slate-500 cursor-pointer flex items-center justify-center overflow-hidden transition-colors">
+            <span className="text-slate-400 dark:text-slate-500 text-sm font-bold">+</span>
+            <input
+              type="color"
+              value={accent}
+              onChange={e => setAccent(e.target.value)}
+              className="absolute opacity-0 inset-0 cursor-pointer w-full h-full"
+            />
+          </label>
+          <span className="text-xs text-slate-400 dark:text-slate-500 ml-1">Current: {accent}</span>
+        </div>
+      </div>
+
+      <div className="pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Interface mode</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Currently <span className="font-medium">{mode}</span> mode
+          </p>
+        </div>
+        <button
+          onClick={toggleMode}
+          className="btn-secondary btn-sm"
+        >
+          Switch to {mode === 'dark' ? 'light' : 'dark'} mode
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ─── Main Settings page ───────────────────────────────────────────────────────
 const Settings: React.FC = () => {
   const { user } = useAuth();
@@ -654,6 +716,7 @@ const Settings: React.FC = () => {
       <SystemInfo />
 
       {isAdmin && <UpdateGuide />}
+      {isAdmin && <ClinicTheme />}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <CategorySection />

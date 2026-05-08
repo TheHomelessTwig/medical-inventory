@@ -56,6 +56,40 @@ MedInventory replaces paper-based or spreadsheet stock management with a purpose
 
 ---
 
+## Screenshots
+
+### Login
+![Login page showing S.H.I.T. branding](docs/screenshots/login.png)
+
+### Dashboard (Dark Mode)
+![Dashboard in dark mode with KPI cards and activity feed](docs/screenshots/dashboard-dark.png)
+
+### Inventory
+![Inventory list with item cards, search and filters](docs/screenshots/inventory.png)
+
+### Doctor — New Order (POS Screen)
+![Doctor POS-style order screen with item grid and basket](docs/screenshots/doctor-order.png)
+
+### Nurse — Quick Charge (POS Screen)
+![Nurse quick charge screen with category filter pills and checkout panel](docs/screenshots/quick-charge.png)
+
+### Requests
+![Stock requests list with status badges and priority sorting](docs/screenshots/requests.png)
+
+### Stocktakes
+![Stocktake session list with print count sheet button](docs/screenshots/stocktakes.png)
+
+### Reports
+![Usage reports with date range filter and charts](docs/screenshots/reports.png)
+
+### My Account (Profile)
+![User profile page with dark mode toggle and accent colour picker](docs/screenshots/profile.png)
+
+### Settings (Admin)
+![Admin settings with clinic theme colour picker and system info](docs/screenshots/settings.png)
+
+---
+
 ## Quick Start
 
 ### Prerequisites

@@ -299,4 +299,58 @@ router.post('/change-password', authenticate, async (req: Request, res: Response
   }
 });
 
+// PUT /api/auth/profile — update own name / email
+router.put('/profile', authenticate, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const profileSchema = z.object({
+      name:  z.string().min(1).max(255).optional(),
+      email: z.string().email().max(255).optional(),
+    });
+    const body = profileSchema.parse(req.body);
+
+    if (!body.name && !body.email) {
+      res.status(400).json({ error: 'Provide at least one field to update' });
+      return;
+    }
+
+    // Check email uniqueness if changing
+    if (body.email && body.email !== req.user!.email) {
+      const exists = await query('SELECT id FROM users WHERE email = $1 AND id != $2', [body.email, req.user!.id]);
+      if (exists.rows.length > 0) {
+        res.status(409).json({ error: 'Email is already in use' });
+        return;
+      }
+    }
+
+    const result = await query(
+      `UPDATE users
+       SET name  = COALESCE($1, name),
+           email = COALESCE($2, email)
+       WHERE id = $3
+       RETURNING id, email, name, role, is_active, last_login, must_change_password, created_at`,
+      [body.name ?? null, body.email ?? null, req.user!.id]
+    );
+
+    const { ipAddress, userAgent } = getClientInfo(req);
+    await logAudit({
+      user: req.user,
+      action: 'PROFILE_UPDATED',
+      entityType: 'user',
+      entityId: req.user!.id,
+      entityName: result.rows[0].name,
+      newValues: body,
+      ipAddress,
+      userAgent,
+    });
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: err.errors[0].message });
+      return;
+    }
+    next(err);
+  }
+});
+
 export default router;

@@ -50,3 +50,6 @@ Desktop.ini
 # ── Logs ──────────────────────────────────────────────────────────────────────
 *.log
 logs/
+
+# ── Screenshot script deps (puppeteer installed temporarily, not part of the app) ──
+node_modules/

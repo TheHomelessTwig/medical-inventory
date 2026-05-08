@@ -18,6 +18,7 @@ import ChangePassword from './pages/ChangePassword';
 import Settings from './pages/Settings';
 import POS from './pages/POS';
 import DoctorOrder from './pages/DoctorOrder';
+import Profile from './pages/Profile';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; roles?: string[] }> = ({
   children, roles,
@@ -95,6 +96,7 @@ function App() {
               <Settings />
             </ProtectedRoute>
           } />
+          <Route path="profile" element={<Profile />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

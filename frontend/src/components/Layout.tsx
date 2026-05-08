@@ -68,7 +68,7 @@ const Layout: React.FC = () => {
   }, [stayLoggedIn, stopCountdown]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div

@@ -2,10 +2,11 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ClipboardList, Stethoscope,
-  FileText, BarChart3, Users, Shield, X, LogOut, Settings2,
-  Activity, Settings, ShoppingCart
+  FileText, BarChart3, Users, Shield, X, LogOut, Settings,
+  Activity, ShoppingCart, Sun, Moon, UserCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import toast from 'react-hot-toast';
 
 interface NavItem {
@@ -16,31 +17,30 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
-  { to: '/inventory', label: 'Inventory', icon: <Package size={18} /> },
-  { to: '/order', label: 'New Order', icon: <ClipboardList size={18} />, roles: ['doctor', 'admin'] },
-  { to: '/pos', label: 'Quick Charge', icon: <ShoppingCart size={18} />, roles: ['nurse', 'admin'] },
-  { to: '/requests', label: 'Requests', icon: <ClipboardList size={18} /> },
-  { to: '/stocktakes', label: 'Stocktakes', icon: <Activity size={18} />, roles: ['admin', 'nurse'] },
-  { to: '/invoices', label: 'Invoices', icon: <FileText size={18} />, roles: ['admin'] },
-  { to: '/reports', label: 'Reports', icon: <BarChart3 size={18} /> },
-  { to: '/users', label: 'Users', icon: <Users size={18} />, roles: ['admin'] },
-  { to: '/audit', label: 'Audit Log', icon: <Shield size={18} />, roles: ['admin'] },
-  { to: '/settings', label: 'Settings', icon: <Settings size={18} />, roles: ['admin'] },
+  { to: '/',          label: 'Dashboard',    icon: <LayoutDashboard size={18} /> },
+  { to: '/inventory', label: 'Inventory',    icon: <Package size={18} /> },
+  { to: '/order',     label: 'New Order',    icon: <ClipboardList size={18} />, roles: ['doctor', 'admin'] },
+  { to: '/pos',       label: 'Quick Charge', icon: <ShoppingCart size={18} />,  roles: ['nurse', 'admin'] },
+  { to: '/requests',  label: 'Requests',     icon: <ClipboardList size={18} /> },
+  { to: '/stocktakes',label: 'Stocktakes',   icon: <Activity size={18} />,      roles: ['admin', 'nurse'] },
+  { to: '/invoices',  label: 'Invoices',     icon: <FileText size={18} />,      roles: ['admin'] },
+  { to: '/reports',   label: 'Reports',      icon: <BarChart3 size={18} /> },
+  { to: '/users',     label: 'Users',        icon: <Users size={18} />,         roles: ['admin'] },
+  { to: '/audit',     label: 'Audit Log',    icon: <Shield size={18} />,        roles: ['admin'] },
+  { to: '/settings',  label: 'Settings',     icon: <Settings size={18} />,      roles: ['admin'] },
 ];
 
 const roleColors: Record<string, string> = {
-  admin: 'bg-purple-500/20 text-purple-300',
+  admin:  'bg-purple-500/20 text-purple-300',
   doctor: 'bg-blue-500/20 text-blue-300',
-  nurse: 'bg-emerald-500/20 text-emerald-300',
+  nurse:  'bg-emerald-500/20 text-emerald-300',
 };
 
-interface SidebarProps {
-  onClose?: () => void;
-}
+interface SidebarProps { onClose?: () => void }
 
 const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
   const { user, logout } = useAuth();
+  const { mode, toggleMode } = useTheme();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -50,7 +50,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
   };
 
   const visibleItems = navItems.filter(
-    (item) => !item.roles || (user && item.roles.includes(user.role))
+    item => !item.roles || (user && item.roles.includes(user.role))
   );
 
   return (
@@ -58,7 +58,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
       {/* Logo */}
       <div className="flex items-center justify-between px-5 h-16 border-b border-slate-700/50">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--accent)' }}>
             <Stethoscope size={16} className="text-white" />
           </div>
           <div>
@@ -75,7 +75,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {visibleItems.map((item) => (
+        {visibleItems.map(item => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -84,10 +84,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 isActive
-                  ? 'bg-blue-600 text-white'
+                  ? 'text-white'
                   : 'text-slate-300 hover:bg-slate-800 hover:text-white'
               }`
             }
+            style={({ isActive }) => isActive ? { backgroundColor: 'var(--accent)' } : {}}
           >
             {item.icon}
             {item.label}
@@ -95,11 +96,17 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
         ))}
       </nav>
 
-      {/* User info */}
+      {/* Bottom controls */}
       {user && (
-        <div className="px-3 py-4 border-t border-slate-700/50">
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-800/50 mb-2">
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
+        <div className="px-3 py-4 border-t border-slate-700/50 space-y-1">
+          {/* User card → profile link */}
+          <NavLink
+            to="/profile"
+            onClick={onClose}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-800/50 hover:bg-slate-800 transition-colors w-full text-left"
+          >
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
+              style={{ backgroundColor: 'var(--accent)' }}>
               {user.name.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
@@ -108,7 +115,21 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
                 {user.role}
               </span>
             </div>
-          </div>
+            <UserCircle size={15} className="text-slate-500 flex-shrink-0" />
+          </NavLink>
+
+          {/* Dark mode toggle */}
+          <button
+            onClick={toggleMode}
+            className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-all"
+          >
+            {mode === 'dark'
+              ? <Sun size={16} className="text-amber-400" />
+              : <Moon size={16} />}
+            {mode === 'dark' ? 'Light mode' : 'Dark mode'}
+          </button>
+
+          {/* Sign out */}
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm font-medium text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-all"

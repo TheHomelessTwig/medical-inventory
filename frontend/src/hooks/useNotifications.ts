@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 // ── Web Audio notification beep (no file required) ───────────────────────────
 function playBeep() {
@@ -44,6 +45,7 @@ function playBeep() {
 //   receipt (status='fulfilled', is_quick_charge=true).
 export function useNotifications() {
   const { user } = useAuth();
+  const { notificationSound } = useTheme();
   const lastSeenRef = useRef<string>(new Date().toISOString());
   const initializedRef = useRef(false);
 
@@ -72,7 +74,7 @@ export function useNotifications() {
   const handleNewRequests = useCallback((requests: Array<{ request_number: string; doctor_name?: string; is_quick_charge?: boolean }>) => {
     if (requests.length === 0) return;
 
-    playBeep();
+    if (notificationSound) playBeep();
 
     if (user?.role === 'nurse') {
       // New requests from doctors waiting to be fulfilled
