@@ -8,21 +8,27 @@ import { logAudit, getClientInfo } from '../utils/audit';
 const router = Router();
 router.use(authenticate, requireAdmin);
 
+const ROLES = ['admin', 'doctor', 'nurse', 'practice_manager', 'receptionist', 'locum_doctor'] as const;
+
 const createSchema = z.object({
-  email: z.string().email().max(255),
-  name: z.string().min(1).max(255),
-  role: z.enum(['admin', 'doctor', 'nurse']),
-  password: z.string().min(8).regex(
+  email:           z.string().email().max(255),
+  name:            z.string().min(1).max(255),
+  role:            z.enum(ROLES),
+  password:        z.string().min(8).regex(
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
     'Password must contain uppercase, lowercase, and a number'
   ),
+  site_id:         z.string().uuid().optional().nullable(),
+  locum_expires_at: z.string().datetime().optional().nullable(),
 });
 
 const updateSchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  role: z.enum(['admin', 'doctor', 'nurse']).optional(),
-  is_active: z.boolean().optional(),
+  name:             z.string().min(1).max(255).optional(),
+  role:             z.enum(ROLES).optional(),
+  is_active:        z.boolean().optional(),
   must_change_password: z.boolean().optional(),
+  site_id:          z.string().uuid().optional().nullable(),
+  locum_expires_at: z.string().datetime().optional().nullable(),
 });
 
 // GET /api/users
@@ -53,10 +59,11 @@ router.post('/', async (req: Request, res: Response, next: NextFunction): Promis
 
     const hash = await bcrypt.hash(body.password, 12);
     const result = await query(`
-      INSERT INTO users (email, name, password_hash, role, must_change_password)
-      VALUES ($1,$2,$3,$4,true)
-      RETURNING id, email, name, role, is_active, must_change_password, created_at
-    `, [body.email.toLowerCase(), body.name, hash, body.role]);
+      INSERT INTO users (email, name, password_hash, role, must_change_password, site_id, locum_expires_at)
+      VALUES ($1,$2,$3,$4,true,$5,$6)
+      RETURNING id, email, name, role, is_active, must_change_password, site_id, locum_expires_at, created_at
+    `, [body.email.toLowerCase(), body.name, hash, body.role,
+        body.site_id ?? null, body.locum_expires_at ?? null]);
 
     const { ipAddress, userAgent } = getClientInfo(req);
     await logAudit({
@@ -103,11 +110,14 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction): Prom
         role = COALESCE($2, role),
         is_active = COALESCE($3, is_active),
         must_change_password = COALESCE($4, must_change_password),
+        site_id = COALESCE($5, site_id),
+        locum_expires_at = $6,
         failed_login_attempts = CASE WHEN $3 = true THEN 0 ELSE failed_login_attempts END,
         locked_until = CASE WHEN $3 = true THEN NULL ELSE locked_until END
-      WHERE id = $5
-      RETURNING id, email, name, role, is_active, must_change_password, last_login, created_at
-    `, [body.name, body.role, body.is_active, body.must_change_password, req.params.id]);
+      WHERE id = $7
+      RETURNING id, email, name, role, is_active, must_change_password, site_id, locum_expires_at, last_login, created_at
+    `, [body.name, body.role, body.is_active, body.must_change_password,
+        body.site_id ?? null, body.locum_expires_at ?? null, req.params.id]);
 
     const { ipAddress, userAgent } = getClientInfo(req);
     await logAudit({

@@ -11,8 +11,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/src/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
       - ./backend/src/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql
-    # No host port mapping — backend reaches Postgres via Docker's internal
-    # network using hostname "postgres". Uncomment below for direct DB access:
+    # Uncomment to allow direct DB access from host (debugging only):
     # ports:
     #   - "127.0.0.1:5432:5432"
     healthcheck:
@@ -39,19 +38,32 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change_this_refresh_secret_min_32}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
-      # CORS_ORIGIN=* allows any device on the LAN to connect via the nginx proxy.
-      # For a fixed clinic IP, set this to http://192.168.x.x:3000 in your .env
+      # CORS_ORIGIN=* allows any LAN device through the nginx proxy.
+      # Set to http://192.168.x.x:3000 for a fixed clinic server.
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       SESSION_TIMEOUT_MINUTES: ${SESSION_TIMEOUT_MINUTES:-30}
       MAX_LOGIN_ATTEMPTS: ${MAX_LOGIN_ATTEMPTS:-5}
       LOCKOUT_MINUTES: ${LOCKOUT_MINUTES:-15}
+      # Email (SMTP) — leave SMTP_HOST blank to disable all email
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@clinic.local}
+      # Scheduled job timezone (IANA tz string, e.g. Australia/Sydney)
+      REPORT_TIMEZONE: ${REPORT_TIMEZONE:-UTC}
+      # File uploads volume mount point
+      UPLOAD_DIR: /uploads
+      # Backup directory for the weekly integrity check
+      BACKUP_DIR: ${BACKUP_DIR:-/opt/medinv/backups}
     volumes:
       - ./version.json:/app/version.json:ro
+      - uploads_data:/uploads
     depends_on:
       postgres:
         condition: service_healthy
-    # Backend is only reachable through the nginx proxy — not exposed externally.
-    # Remove the comment below if you need direct backend access for debugging:
+    # Uncomment for direct backend access when debugging:
     # ports:
     #   - "4000:4000"
 
@@ -60,8 +72,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Empty = use relative URLs (/api/...) so the app works from any device.
-        # nginx proxies /api/* → backend:4000 internally.
+        # Empty = use relative URLs (/api/...) — nginx proxies internally.
         VITE_API_URL: ""
     container_name: medinv_frontend
     restart: unless-stopped
@@ -72,4 +83,6 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  uploads_data:
     driver: local

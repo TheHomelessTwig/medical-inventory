@@ -404,6 +404,41 @@ openssl rand -hex 64    # for JWT_SECRET and JWT_REFRESH_SECRET
 openssl rand -hex 32    # for DB_PASSWORD
 ```
 
+### Environment variables — full reference
+
+| Variable | Default | Description |
+|---|---|---|
+| `DB_PASSWORD` | `changeme_strong_password` | PostgreSQL password |
+| `JWT_SECRET` | `change_this_jwt_secret_minimum_32_chars` | Access token signing key |
+| `JWT_REFRESH_SECRET` | `change_this_refresh_secret_min_32` | Refresh token signing key |
+| `JWT_EXPIRES_IN` | `15m` | Access token lifetime |
+| `JWT_REFRESH_EXPIRES_IN` | `30d` | Refresh token lifetime |
+| `CORS_ORIGIN` | `*` | Restrict to clinic IP for production |
+| `SESSION_TIMEOUT_MINUTES` | `30` | Idle logout timeout |
+| `MAX_LOGIN_ATTEMPTS` | `5` | Failed logins before account lockout |
+| `LOCKOUT_MINUTES` | `15` | How long accounts stay locked |
+| `SMTP_HOST` | *(empty)* | Leave blank to disable email |
+| `SMTP_PORT` | `587` | SMTP port |
+| `SMTP_SECURE` | `false` | `true` for port 465 (SSL) |
+| `SMTP_USER` | *(empty)* | SMTP authentication username |
+| `SMTP_PASS` | *(empty)* | SMTP authentication password |
+| `SMTP_FROM` | `noreply@clinic.local` | From address for outbound email |
+| `REPORT_TIMEZONE` | `UTC` | IANA timezone for scheduled jobs (e.g. `Australia/Sydney`) |
+| `UPLOAD_DIR` | `/uploads` | File attachment storage path in container |
+| `BACKUP_DIR` | `/opt/medinv/backups` | Path scanned by weekly backup integrity check |
+
+### File attachments storage
+
+The `uploads_data` Docker volume stores file attachments (invoices, returns, purchase orders). It is separate from the database volume and should be included in backups:
+
+```bash
+# Backup uploads volume
+docker run --rm \
+  -v medinv_uploads_data:/uploads:ro \
+  -v $(pwd)/backups:/backup \
+  alpine tar czf /backup/uploads_$(date +%Y%m%d).tar.gz -C / uploads
+```
+
 ### Restrict CORS
 
 Change `CORS_ORIGIN=*` to your clinic's server IP:

@@ -27,7 +27,7 @@ const roleColors: Record<string, 'purple' | 'blue' | 'emerald'> = {
 interface UserFormData {
   name: string;
   email: string;
-  role: 'admin' | 'doctor' | 'nurse';
+  role: 'admin' | 'doctor' | 'nurse' | 'practice_manager' | 'receptionist' | 'locum_doctor';
   password?: string;
 }
 
@@ -56,6 +56,9 @@ const UserForm: React.FC<{
           <option value="doctor">Doctor</option>
           <option value="nurse">Nurse</option>
           <option value="admin">Admin</option>
+          <option value="practice_manager">Practice Manager</option>
+          <option value="receptionist">Receptionist</option>
+          <option value="locum_doctor">Locum Doctor</option>
         </select>
       </div>
       {isNew && (

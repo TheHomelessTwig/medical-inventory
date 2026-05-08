@@ -3,7 +3,8 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ClipboardList, Stethoscope,
   FileText, BarChart3, Users, Shield, X, LogOut, Settings,
-  Activity, ShoppingCart, Sun, Moon, UserCircle, ArrowLeftRight
+  Activity, ShoppingCart, Sun, Moon, UserCircle, ArrowLeftRight,
+  Truck
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -17,24 +18,28 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { to: '/',          label: 'Dashboard',    icon: <LayoutDashboard size={18} /> },
-  { to: '/inventory', label: 'Inventory',    icon: <Package size={18} /> },
-  { to: '/order',     label: 'New Order',    icon: <ClipboardList size={18} />, roles: ['doctor', 'admin'] },
-  { to: '/pos',       label: 'Quick Charge', icon: <ShoppingCart size={18} />,  roles: ['nurse', 'admin'] },
-  { to: '/requests',  label: 'Requests',     icon: <ClipboardList size={18} /> },
-  { to: '/stocktakes',label: 'Stocktakes',   icon: <Activity size={18} />,      roles: ['admin', 'nurse'] },
-  { to: '/returns',   label: 'Returns',      icon: <ArrowLeftRight size={18} />, roles: ['admin', 'nurse'] },
-  { to: '/invoices',  label: 'Invoices',     icon: <FileText size={18} />,      roles: ['admin'] },
-  { to: '/reports',   label: 'Reports',      icon: <BarChart3 size={18} /> },
-  { to: '/users',     label: 'Users',        icon: <Users size={18} />,         roles: ['admin'] },
-  { to: '/audit',     label: 'Audit Log',    icon: <Shield size={18} />,        roles: ['admin'] },
-  { to: '/settings',  label: 'Settings',     icon: <Settings size={18} />,      roles: ['admin'] },
+  { to: '/',                label: 'Dashboard',       icon: <LayoutDashboard size={18} /> },
+  { to: '/inventory',       label: 'Inventory',       icon: <Package size={18} /> },
+  { to: '/order',           label: 'New Order',       icon: <ClipboardList size={18} />,  roles: ['doctor', 'admin', 'locum_doctor'] },
+  { to: '/pos',             label: 'Quick Charge',    icon: <ShoppingCart size={18} />,   roles: ['nurse', 'admin'] },
+  { to: '/requests',        label: 'Requests',        icon: <ClipboardList size={18} />,  roles: ['admin', 'doctor', 'nurse', 'practice_manager', 'locum_doctor'] },
+  { to: '/stocktakes',      label: 'Stocktakes',      icon: <Activity size={18} />,       roles: ['admin', 'nurse', 'practice_manager'] },
+  { to: '/returns',         label: 'Returns',         icon: <ArrowLeftRight size={18} />, roles: ['admin', 'nurse', 'practice_manager'] },
+  { to: '/purchase-orders', label: 'Purchase Orders', icon: <Truck size={18} />,          roles: ['admin', 'practice_manager'] },
+  { to: '/invoices',        label: 'Invoices',        icon: <FileText size={18} />,       roles: ['admin', 'practice_manager'] },
+  { to: '/reports',         label: 'Reports',         icon: <BarChart3 size={18} />,      roles: ['admin', 'doctor', 'nurse', 'practice_manager', 'locum_doctor'] },
+  { to: '/users',           label: 'Users',           icon: <Users size={18} />,          roles: ['admin', 'practice_manager'] },
+  { to: '/audit',           label: 'Audit Log',       icon: <Shield size={18} />,         roles: ['admin', 'practice_manager'] },
+  { to: '/settings',        label: 'Settings',        icon: <Settings size={18} />,       roles: ['admin', 'practice_manager'] },
 ];
 
 const roleColors: Record<string, string> = {
-  admin:  'bg-purple-500/20 text-purple-300',
-  doctor: 'bg-blue-500/20 text-blue-300',
-  nurse:  'bg-emerald-500/20 text-emerald-300',
+  admin:            'bg-purple-500/20 text-purple-300',
+  doctor:           'bg-blue-500/20 text-blue-300',
+  nurse:            'bg-emerald-500/20 text-emerald-300',
+  practice_manager: 'bg-amber-500/20 text-amber-300',
+  receptionist:     'bg-slate-500/20 text-slate-300',
+  locum_doctor:     'bg-cyan-500/20 text-cyan-300',
 };
 
 interface SidebarProps { onClose?: () => void }

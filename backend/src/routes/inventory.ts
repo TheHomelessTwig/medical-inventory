@@ -29,6 +29,9 @@ const itemSchema = z.object({
   storage_location: z.string().max(255).optional().nullable(),
   requires_batch_tracking: z.boolean().default(false),
   dispense_unit: z.number().min(0.001).max(10000).default(1),
+  is_controlled: z.boolean().default(false),
+  controlled_schedule: z.string().max(10).optional().nullable(),
+  site_id: z.string().uuid().optional().nullable(),
   notes: z.string().optional().nullable(),
 });
 
@@ -280,14 +283,16 @@ router.post('/', requireAdmin, async (req: Request, res: Response, next: NextFun
       INSERT INTO inventory_items
         (name, description, category_id, sku, barcode, supplier_id, unit,
          reorder_threshold, internal_price, supplier_cost, gst_applicable, gst_rate,
-         storage_location, requires_batch_tracking, dispense_unit, notes, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+         storage_location, requires_batch_tracking, dispense_unit,
+         is_controlled, controlled_schedule, site_id, notes, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
       RETURNING *
     `, [
       body.name, body.description, body.category_id, body.sku, body.barcode,
       body.supplier_id, body.unit, body.reorder_threshold, body.internal_price,
       body.supplier_cost, body.gst_applicable, body.gst_rate,
       body.storage_location, body.requires_batch_tracking, body.dispense_unit,
+      body.is_controlled, body.controlled_schedule, body.site_id,
       body.notes, req.user!.id,
     ]);
 
@@ -342,8 +347,11 @@ router.put('/:id', requireAdmin, async (req: Request, res: Response, next: NextF
         requires_batch_tracking = COALESCE($14, requires_batch_tracking),
         dispense_unit = COALESCE($15, dispense_unit),
         notes = $16,
-        is_active = COALESCE($17, is_active)
-      WHERE id = $18
+        is_active = COALESCE($17, is_active),
+        is_controlled = COALESCE($18, is_controlled),
+        controlled_schedule = $19,
+        site_id = $20
+      WHERE id = $21
       RETURNING *
     `, [
       body.name, body.description, body.category_id ?? existing.rows[0].category_id,
@@ -355,6 +363,9 @@ router.put('/:id', requireAdmin, async (req: Request, res: Response, next: NextF
       body.requires_batch_tracking, body.dispense_unit,
       body.notes ?? existing.rows[0].notes,
       (req.body as Record<string, unknown>).is_active ?? existing.rows[0].is_active,
+      body.is_controlled ?? existing.rows[0].is_controlled,
+      body.controlled_schedule ?? existing.rows[0].controlled_schedule,
+      body.site_id ?? existing.rows[0].site_id,
       req.params.id,
     ]);
 
@@ -559,6 +570,57 @@ router.patch('/bulk', requireAdmin, async (req: Request, res: Response, next: Ne
     if (err instanceof z.ZodError) { res.status(400).json({ error: 'Validation failed', details: err.errors }); return; }
     next(err);
   }
+});
+
+// GET /api/inventory/controlled-register
+// Returns all S8 dispensing events — used to generate the controlled drug register.
+router.get('/controlled-register', requireAdmin, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { from, to, item_id, format } = req.query as Record<string, string>;
+    const params: unknown[] = [];
+    const conditions: string[] = ['i.is_controlled = true'];
+    let p = 1;
+    if (from)    { conditions.push(`sf.completed_at >= $${p++}`); params.push(from); }
+    if (to)      { conditions.push(`sf.completed_at <= $${p++}`); params.push(to + ' 23:59:59'); }
+    if (item_id) { conditions.push(`sfi.inventory_item_id = $${p++}`); params.push(item_id); }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    const result = await query(`
+      SELECT
+        sf.completed_at,
+        sr.request_number,
+        sr.patient_name,
+        sr.patient_ref,
+        d.name  AS doctor_name,
+        n.name  AS nurse_name,
+        i.name  AS item_name,
+        i.controlled_schedule,
+        sfi.quantity_used,
+        i.unit,
+        sfi.batch_number,
+        sfi.expiry_date,
+        sfi.witness_name,
+        sfi.witness_role
+      FROM stock_fulfillment_items sfi
+      JOIN stock_fulfillments sf ON sfi.fulfillment_id = sf.id
+      JOIN stock_requests sr     ON sf.request_id = sr.id
+      JOIN inventory_items i     ON sfi.inventory_item_id = i.id
+      JOIN users d               ON sr.doctor_id = d.id
+      JOIN users n               ON sf.nurse_id  = n.id
+      ${where}
+      ORDER BY sf.completed_at DESC
+    `, params);
+
+    if (format === 'csv') {
+      const csv = stringify(result.rows, { header: true });
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="controlled_drug_register_${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send(csv);
+      return;
+    }
+
+    res.json(result.rows);
+  } catch (err) { next(err); }
 });
 
 export default router;

@@ -22,24 +22,55 @@ export default defineConfig({
           { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
         ],
         shortcuts: [
-          { name: 'Quick Charge', short_name: 'Charge', description: 'Nurse quick charge screen', url: '/pos', icons: [{ src: '/pwa-192.png', sizes: '192x192' }] },
-          { name: 'New Order', short_name: 'Order', description: 'Doctor order screen', url: '/order', icons: [{ src: '/pwa-192.png', sizes: '192x192' }] },
+          { name: 'Quick Charge', short_name: 'Charge', description: 'Nurse quick charge screen',  url: '/pos',   icons: [{ src: '/pwa-192.png', sizes: '192x192' }] },
+          { name: 'New Order',    short_name: 'Order',  description: 'Doctor order screen',        url: '/order', icons: [{ src: '/pwa-192.png', sizes: '192x192' }] },
         ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Background sync queue: POST requests to fulfil / quick-charge are queued
+        // when offline and replayed when connectivity is restored.
+        backgroundSync: {
+          name: 'dispense-queue',
+          options: {
+            maxRetentionTime: 24 * 60,  // Keep queued requests for up to 24 hours
+          },
+        },
         runtimeCaching: [
           {
+            // Offline-capable dispensing: queue POST mutations to fulfil + quick-charge
+            urlPattern: /^\/api\/requests\/.*\/fulfill$/,
+            method: 'POST',
+            handler: 'NetworkOnly',
+            options: {
+              backgroundSync: {
+                name: 'fulfil-queue',
+                options: { maxRetentionTime: 24 * 60 },
+              },
+            },
+          },
+          {
+            urlPattern: /^\/api\/requests\/quick-charge$/,
+            method: 'POST',
+            handler: 'NetworkOnly',
+            options: {
+              backgroundSync: {
+                name: 'quick-charge-queue',
+                options: { maxRetentionTime: 24 * 60 },
+              },
+            },
+          },
+          {
+            // API GET requests: NetworkFirst with short cache for offline reads
             urlPattern: /^\/api\//,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
               networkTimeoutSeconds: 10,
-              expiration: { maxEntries: 50, maxAgeSeconds: 5 * 60 },
+              expiration: { maxEntries: 80, maxAgeSeconds: 5 * 60 },
             },
           },
         ],
-        // Don't cache-first the HTML shell — always fetch fresh
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
       },

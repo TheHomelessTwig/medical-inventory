@@ -1,4 +1,10 @@
-export type Role = 'admin' | 'doctor' | 'nurse';
+export type Role =
+  | 'admin'
+  | 'doctor'
+  | 'nurse'
+  | 'practice_manager'
+  | 'receptionist'
+  | 'locum_doctor';
 
 export interface RequestTemplate {
   id: string;

@@ -24,16 +24,18 @@ const createRequestSchema = z.object({
 const fulfillSchema = z.object({
   notes: z.string().optional().nullable(),
   items: z.array(z.object({
-    request_item_id: z.string().uuid().optional().nullable(),
-    inventory_item_id: z.string().uuid(),
-    batch_id: z.string().uuid().optional().nullable(),
-    quantity_used: z.number().positive(),
-    batch_number: z.string().optional().nullable(),
-    lot_number: z.string().optional().nullable(),
-    expiry_date: z.string().optional().nullable(),
-    internal_price: z.number().min(0).optional().nullable(),
-    is_substitution: z.boolean().default(false),
+    request_item_id:    z.string().uuid().optional().nullable(),
+    inventory_item_id:  z.string().uuid(),
+    batch_id:           z.string().uuid().optional().nullable(),
+    quantity_used:      z.number().positive(),
+    batch_number:       z.string().optional().nullable(),
+    lot_number:         z.string().optional().nullable(),
+    expiry_date:        z.string().optional().nullable(),
+    internal_price:     z.number().min(0).optional().nullable(),
+    is_substitution:    z.boolean().default(false),
     substitution_reason: z.string().optional().nullable(),
+    witness_name:       z.string().optional().nullable(),
+    witness_role:       z.string().optional().nullable(),
   })).min(1),
 });
 
@@ -365,12 +367,14 @@ router.post('/:id/fulfill', requireRole('nurse', 'admin'), async (req: Request, 
           INSERT INTO stock_fulfillment_items
             (fulfillment_id, request_item_id, inventory_item_id, batch_id,
              quantity_used, batch_number, lot_number, expiry_date,
-             internal_price, total_charge, is_substitution, substitution_reason)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+             internal_price, total_charge, is_substitution, substitution_reason,
+             witness_name, witness_role)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         `, [
           fulfillmentId, item.request_item_id, item.inventory_item_id, item.batch_id,
           item.quantity_used, item.batch_number, item.lot_number, item.expiry_date,
           item.price, item.lineCharge, item.is_substitution, item.substitution_reason,
+          item.witness_name ?? null, item.witness_role ?? null,
         ]);
       }
 

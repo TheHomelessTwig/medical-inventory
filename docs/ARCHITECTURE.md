@@ -529,3 +529,290 @@ The PWA is installable on:
 - iOS Safari: share button → "Add to Home Screen"
 
 The app runs in `display: standalone` mode (no browser chrome) once installed.
+
+---
+
+## Database Migration System
+
+`backend/src/db/migrate.ts` runs automatically on every app startup before the HTTP server accepts traffic.
+
+### How it works
+
+```
+1. Connect to database
+2. CREATE TABLE IF NOT EXISTS schema_migrations(version, applied_at)
+3. Check if users table exists (existing install) and schema_migrations is empty
+   → If yes: stamp ALL migration files as applied without running them
+     (the schema is already in place from docker-entrypoint-initdb.d)
+4. For each *.sql file in src/db/migrations/ (sorted ascending):
+   → Skip if already stamped in schema_migrations
+   → Run the SQL (idempotent: uses IF NOT EXISTS / ADD COLUMN IF NOT EXISTS)
+   → INSERT into schema_migrations
+5. COMMIT
+```
+
+### Migration files
+
+All files in `backend/src/db/migrations/` are idempotent — safe to run on an existing schema. New columns use `ADD COLUMN IF NOT EXISTS`, new tables use `CREATE TABLE IF NOT EXISTS`, constraint changes use `DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT`.
+
+| File | Description |
+|---|---|
+| `0001_wastage.sql` | Add `wastage` to adjustment_type CHECK; `wastage_reason` column |
+| `0002_totp.sql` | Add `totp_secret`, `totp_enabled` to users |
+| `0003_request_templates.sql` | Create `request_templates` table |
+| `0004_returns.sql` | Create `stock_returns`, `stock_return_items`, sequence |
+| `0005_budgets.sql` | Create `budgets` table |
+| `0006_user_sessions.sql` | Create `user_sessions` table for session revocation |
+| `0007_controlled_drugs.sql` | Add `is_controlled`, `controlled_schedule` on items; witness columns on fulfilments |
+| `0008_purchase_orders.sql` | Create `purchase_orders`, `purchase_order_items`, sequence |
+| `0009_attachments.sql` | Create `attachments` table |
+| `0010_sites.sql` | Create `sites`; add `site_id` to users, inventory_items, requests, adjustments |
+| `0011_roles.sql` | Update role CHECK to include `practice_manager`, `receptionist`, `locum_doctor`; add `locum_expires_at` |
+| `0012_stocktake_locking.sql` | Add `version` column for optimistic locking |
+| `0013_data_retention.sql` | Create `data_retention_config`, `audit_log_archive` |
+| `0014_expiry_alerts.sql` | Create `expiry_alert_config`, `expiry_alert_sent` |
+
+---
+
+## Role System (Extended)
+
+### Roles
+
+| Role | Description |
+|---|---|
+| `admin` | Full access to everything |
+| `doctor` | Place orders, view own requests and reports, 2FA |
+| `locum_doctor` | Same as doctor, with optional `locum_expires_at` expiry |
+| `nurse` | Fulfill requests, quick charge, stocktakes, returns, wastage |
+| `practice_manager` | Reports, invoices, purchase orders, users, settings; no dispensing |
+| `receptionist` | Read-only inventory and patient ledger only |
+
+### Locum expiry
+
+The `authenticate` middleware checks `locum_expires_at` for `locum_doctor` accounts. If the timestamp is in the past, the API returns `403 Locum access has expired` and the user must re-authenticate after an admin extends their access.
+
+### Middleware helpers
+
+```typescript
+requireAdmin            // admin only
+requireAdminOrNurse     // admin | nurse
+requireAdminOrManager   // admin | practice_manager
+requireClinicalAccess   // all roles (alias: requireAnyRole)
+```
+
+---
+
+## Session Management
+
+### user_sessions table
+
+Each login creates a `user_sessions` record with a `token_family` UUID that ties the access + refresh token pair together. The record tracks:
+- `ip_address`, `user_agent` — for the session list UI
+- `last_seen_at` — updated on each token refresh
+- `revoked`, `revoked_at`, `revoked_by` — for forced logout
+
+### Revocation endpoints
+
+```
+GET    /api/auth/sessions             — list own active sessions
+DELETE /api/auth/sessions/:id         — revoke one session
+DELETE /api/auth/sessions             — revoke all own sessions (log out everywhere)
+GET    /api/auth/sessions/user/:id    — admin: view user's sessions
+DELETE /api/auth/sessions/user/:id    — admin: revoke all sessions for a user
+```
+
+### Effect of deactivating a user
+
+`DELETE /api/users/:id` sets `is_active = false`. The `authenticate` middleware checks this on every request — the user is blocked within 15 minutes (the access token lifetime) or immediately on next token refresh. An admin can also call `DELETE /api/auth/sessions/user/:id` to revoke refresh tokens immediately.
+
+---
+
+## Controlled Drug Register
+
+### Schema
+
+```sql
+-- inventory_items
+is_controlled       BOOLEAN DEFAULT false
+controlled_schedule VARCHAR(10)  -- 'S4', 'S8', 'S4D', etc.
+
+-- stock_fulfillment_items
+witness_name  VARCHAR(255)  -- required for S8 dispensing
+witness_role  VARCHAR(100)
+```
+
+### Controlled Drug Register export
+
+```
+GET /api/inventory/controlled-register
+Query params: from, to, item_id, format=csv
+```
+
+Returns all dispensing events where `inventory_items.is_controlled = true`, including witness details. Use `?format=csv` for the downloadable CSV for regulatory compliance.
+
+---
+
+## Purchase Order Workflow
+
+```
+draft → sent → partial → received
+             ↘ cancelled
+```
+
+| Step | Endpoint | Effect |
+|---|---|---|
+| Create | `POST /api/purchase-orders` | Status: draft; generates PO-NNNNNN number |
+| Edit | `PUT /api/purchase-orders/:id` | Draft only |
+| Send | `POST /api/purchase-orders/:id/send` | Status: sent; emails supplier if they have an email |
+| Receive | `POST /api/purchase-orders/:id/receive` | Updates `quantity_on_hand` + creates batches + stock adjustment records |
+| Cancel | `DELETE /api/purchase-orders/:id` | Draft or sent only |
+
+Partial receipt (some items received): status becomes `partial`. Further receipts add to `quantity_received`. When all lines are fully received, status becomes `received`.
+
+---
+
+## File Attachments
+
+Files are stored on the **uploads Docker volume** (`/uploads` inside the container, mapped to `uploads_data` named volume). The DB stores only metadata.
+
+```
+POST /api/attachments/:entityType/:entityId  → multipart/form-data, field "file"
+GET  /api/attachments/:entityType/:entityId  → list for entity
+GET  /api/attachments/file/:id               → stream download
+DELETE /api/attachments/:id                  → admin/manager only
+```
+
+**Allowed entity types:** `invoice`, `return`, `purchase_order`  
+**Allowed MIME types:** PDF, JPEG, PNG, WebP, CSV, XLSX  
+**Max size:** 20 MB per file, 5 files per upload request
+
+The `stored_name` is a UUID-based filename (`<uuid>.pdf`) that prevents path traversal and filename collisions.
+
+---
+
+## Multi-Site Support
+
+The `sites` table provides a flat namespace. Every `user`, `inventory_item`, `stock_request`, and `stock_adjustment` has an optional `site_id` FK.
+
+A default site (`id = 00000000-0000-0000-0000-000000000001`, name = "Main Clinic") is inserted on migration so existing rows remain valid.
+
+Site-scoped queries filter with `WHERE site_id = $1` or `WHERE site_id IS NULL` (shared across all sites). The API for sites:
+
+```
+GET    /api/sites         — all sites with user/item counts
+POST   /api/sites         — create (admin)
+PUT    /api/sites/:id     — update (admin)
+DELETE /api/sites/:id     — deactivate (admin; default site protected)
+```
+
+---
+
+## Data Retention & Archiving
+
+### Configuration
+
+```sql
+data_retention_config (single row, id=1):
+  audit_log_retain_days    -- default 2555 (7 years)
+  patient_data_retain_days -- default 2555
+  anonymise_patient_refs   -- default false
+```
+
+### Nightly retention job (`backend/src/jobs/retentionJob.ts`)
+
+Runs daily at 03:00 in the configured timezone:
+1. Copies audit_log rows older than `audit_log_retain_days` → `audit_log_archive`
+2. Deletes those rows from `audit_log` (keeps the live table fast)
+3. If `anonymise_patient_refs = true`: sets `patient_name = '[Anonymised]'` and `patient_ref = '[Anonymised]'` on stock_requests older than `patient_data_retain_days`
+
+### DB size monitoring
+
+```
+GET /api/retention/db-size   — table sizes, row estimates, audit log counts
+```
+
+Returns `pg_statio_user_tables` data sorted by total size, plus live/archive audit counts. Use this to decide when to add table partitioning.
+
+### Typical DB size
+
+| Period | Relational data | With attachments |
+|---|---|---|
+| 1 year (busy clinic) | ~100 MB | ~500 MB |
+| 5 years (no archiving) | ~650 MB | 1–3 GB |
+| 5 years (with nightly archiving) | ~150 MB live | ~250 MB live |
+
+The audit_log_archive table is append-only and grows indefinitely — it should be backed up and optionally partitioned with `pg_partman` for very large installations (>5M rows).
+
+---
+
+## Scheduled Jobs Summary
+
+All jobs started in `index.ts` (non-test environments):
+
+| Job | Schedule | File |
+|---|---|---|
+| Weekly usage + low-stock email | Monday 08:00 | `scheduledReports.ts` |
+| Daily expiry alerts | Daily 08:00 | `scheduledReports.ts` |
+| Weekly backup integrity check | Sunday 04:00 | `scheduledReports.ts` |
+| Nightly data retention | Daily 03:00 | `retentionJob.ts` |
+
+### Expiry alert deduplication
+
+The `expiry_alert_sent` table tracks which `(batch_id, days_out)` pairs have already been alerted. A row is inserted before the email is sent, so if the cron runs twice (e.g. after a restart) or a batch is still expiring at the same threshold next day, no duplicate email is sent.
+
+### Backup integrity check
+
+The weekly check (Sunday 04:00):
+1. Finds the most recent `*.sql.gz` file in `BACKUP_DIR`
+2. Creates a temporary database, restores the backup, counts `inventory_items` rows
+3. Drops the temp database
+4. Emails admins: ✅ passed (with row count) or ⚠️ failed (with file name)
+5. If no backup files found: sends an alert
+
+---
+
+## Stocktake Optimistic Locking
+
+`stocktake_items` has a `version INTEGER DEFAULT 0` column. When updating a count:
+
+```typescript
+// Client sends: { counted_quantity, version: <current_version> }
+
+UPDATE stocktake_items
+SET counted_quantity = $1, version = version + 1
+WHERE id = $2 AND version = $3   -- optimistic lock check
+RETURNING *
+```
+
+If the row has been updated since the client read it (version mismatch), the UPDATE affects 0 rows and the API returns `409 Conflict: this item was updated by someone else. Please reload and try again.`
+
+Version is optional in the request — if omitted, the update is applied unconditionally (backwards compatible).
+
+---
+
+## Offline Dispensing Queue (PWA)
+
+The service worker uses Workbox Background Sync to queue POST mutations when offline:
+
+| Queue | URL pattern | Retention |
+|---|---|---|
+| `fulfil-queue` | `/api/requests/*/fulfill` | 24 hours |
+| `quick-charge-queue` | `/api/requests/quick-charge` | 24 hours |
+
+When connectivity is restored, the service worker automatically replays the queued requests in order. If a request fails after replay, it stays in the queue until the 24-hour TTL expires.
+
+**Note:** Queued mutations use the access token that was current when the request was made. If the token expires while offline (15-minute TTL), the replay will receive a 401 and fail. For extended offline use, a longer `JWT_EXPIRES_IN` value (e.g. `2h`) is recommended.
+
+---
+
+## Error Boundaries
+
+`ErrorBoundary` (a React class component) wraps each major page route in `App.tsx`:
+
+```tsx
+<Route path="inventory" element={
+  <ErrorBoundary context="Inventory"><Inventory /></ErrorBoundary>
+} />
+```
+
+If a page component throws an unhandled error during render, the boundary catches it and shows a "Something went wrong / Try again / Reload page" card instead of a blank screen. The full error and component stack are logged to the browser console and (in Docker) to the container stdout log.

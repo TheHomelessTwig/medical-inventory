@@ -2,11 +2,19 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { query } from '../db';
 
+export type UserRole =
+  | 'admin'
+  | 'doctor'
+  | 'nurse'
+  | 'practice_manager'
+  | 'receptionist'
+  | 'locum_doctor';
+
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'doctor' | 'nurse';
+  role: UserRole;
 }
 
 declare global {
@@ -45,7 +53,7 @@ export const authenticate = async (
     }
 
     const result = await query(
-      'SELECT id, email, name, role, is_active FROM users WHERE id = $1',
+      'SELECT id, email, name, role, is_active, locum_expires_at FROM users WHERE id = $1',
       [payload.sub]
     );
 
@@ -54,11 +62,18 @@ export const authenticate = async (
       return;
     }
 
+    // Locum expiry check
+    const u = result.rows[0];
+    if (u.role === 'locum_doctor' && u.locum_expires_at && new Date(u.locum_expires_at) < new Date()) {
+      res.status(403).json({ error: 'Locum access has expired. Please contact an administrator.' });
+      return;
+    }
+
     req.user = {
-      id: result.rows[0].id,
-      email: result.rows[0].email,
-      name: result.rows[0].name,
-      role: result.rows[0].role,
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      role: u.role,
     };
     next();
   } catch {
@@ -80,6 +95,11 @@ export const requireRole = (...roles: string[]) => {
   };
 };
 
-export const requireAdmin = requireRole('admin');
+export const requireAdmin        = requireRole('admin');
 export const requireAdminOrNurse = requireRole('admin', 'nurse');
-export const requireAnyRole = requireRole('admin', 'doctor', 'nurse');
+export const requireAdminOrManager = requireRole('admin', 'practice_manager');
+// Any role that can view clinical data
+export const requireClinicalAccess = requireRole(
+  'admin', 'doctor', 'nurse', 'practice_manager', 'receptionist', 'locum_doctor'
+);
+export const requireAnyRole = requireClinicalAccess;

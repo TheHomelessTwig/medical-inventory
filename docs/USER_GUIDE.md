@@ -161,6 +161,60 @@ All tabs support date ranges and CSV export.
 
 **Audit Log** records every significant action — who, what, when, before/after values. Use the search and date filter to investigate specific events. The log is append-only; no user can delete records.
 
+### Purchase Orders
+
+**Raise a purchase order:**
+1. Go to **Purchase Orders → New Order**
+2. Enter the supplier name (matches existing suppliers), expected date, and notes
+3. Add line items — item name, quantity, and unit cost
+4. Click **Create Order** (status: Draft)
+5. When ready to send: open the order → **Mark as Sent**
+   - If the supplier has an email address on file, the PO is emailed to them automatically
+
+**Receiving stock against a PO:**
+1. Open the PO → **Record Receipt**
+2. Enter quantity received, batch number, and expiry date for each line
+3. Click **Record Receipt** — stock levels are updated and adjustment records are created
+4. Partially received orders show status **Partial**; further receipts accumulate
+
+**Attachments:** Drag and drop PDF/image/CSV files onto any PO, invoice, or return to attach them for record-keeping.
+
+### Session Management
+
+**My Account → Sessions:** Shows all your active login sessions (device, IP, last seen).
+- Click **Revoke** next to any session to force a sign-out from that device
+- Click **Sign out everywhere** to revoke all sessions at once
+
+**Admin — revoking a user's sessions:**
+Users → find user → **Revoke All Sessions** — immediately invalidates all their tokens.
+
+### Managing Sites (Multi-location)
+
+**Settings → Sites:**
+- Add clinic locations (name, address, phone, email)
+- Assign staff and inventory items to a site for per-location filtering and reporting
+- The default "Main Clinic" cannot be deleted
+
+### Data Retention
+
+**Settings → Data Retention:**
+| Setting | Default | Notes |
+|---|---|---|
+| Audit log retain | 7 years | Records older than this move to archive nightly |
+| Patient data retain | 7 years | How long patient names/refs are kept |
+| Anonymise patient refs | Off | When on: automatically replaces names with [Anonymised] |
+
+Click **Run Now** to trigger the retention job immediately (useful after first configuration).
+
+The **Database Size** tab shows current table sizes to help plan for future growth.
+
+### Controlled Drug Register
+
+For clinics using Schedule 8 (or S4) drugs:
+- Mark items as **Controlled** when adding/editing them; set the schedule (S4, S8, etc.)
+- When a nurse fulfils a controlled drug, they must enter a **witness name and role**
+- Go to **Reports → Controlled Drug Register** to view or export the full dispensing history (CSV) for regulatory compliance
+
 ### Running a Stocktake
 
 See [Stocktake Workflow](#stocktake-workflow) below.

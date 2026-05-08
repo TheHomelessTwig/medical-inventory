@@ -21,7 +21,8 @@ const createSchema = z.object({
 
 const countSchema = z.object({
   counted_quantity: z.number().min(0),
-  notes: z.string().optional().nullable(),
+  notes:   z.string().optional().nullable(),
+  version: z.number().int().min(0).optional(),   // optimistic lock version
 });
 
 // GET /api/stocktakes
@@ -217,12 +218,34 @@ router.put('/:id/items/:itemId', async (req: Request, res: Response, next: NextF
       return;
     }
 
-    const result = await query(`
-      UPDATE stocktake_items
-      SET counted_quantity = $1, notes = $2, counted_at = NOW(), counted_by = $3
-      WHERE id = $4 AND stocktake_id = $5
-      RETURNING *
-    `, [body.counted_quantity, body.notes, req.user!.id, req.params.itemId, req.params.id]);
+    // Optimistic locking: if caller passed a version, it must match current row
+    let result;
+    if (body.version !== undefined) {
+      result = await query(`
+        UPDATE stocktake_items
+        SET counted_quantity = $1, notes = $2, counted_at = NOW(), counted_by = $3,
+            version = version + 1
+        WHERE id = $4 AND stocktake_id = $5 AND version = $6
+        RETURNING *
+      `, [body.counted_quantity, body.notes, req.user!.id, req.params.itemId, req.params.id, body.version]);
+      if (result.rows.length === 0) {
+        // Check if the item exists at all
+        const check = await query('SELECT id FROM stocktake_items WHERE id = $1', [req.params.itemId]);
+        if (check.rows.length === 0) {
+          res.status(404).json({ error: 'Stocktake item not found' }); return;
+        }
+        res.status(409).json({ error: 'Conflict: this item was updated by someone else. Please reload and try again.' });
+        return;
+      }
+    } else {
+      result = await query(`
+        UPDATE stocktake_items
+        SET counted_quantity = $1, notes = $2, counted_at = NOW(), counted_by = $3,
+            version = version + 1
+        WHERE id = $4 AND stocktake_id = $5
+        RETURNING *
+      `, [body.counted_quantity, body.notes, req.user!.id, req.params.itemId, req.params.id]);
+    }
 
     if (result.rows.length === 0) {
       res.status(404).json({ error: 'Stocktake item not found' });

@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4, v4 as uuidV4 } from 'uuid';
 import { z } from 'zod';
 import { TOTP } from 'otplib';
 
@@ -157,12 +157,18 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction): P
 
     const { accessToken, refreshToken } = generateTokens(user.id, user.email, user.name, user.role);
 
-    // Store refresh token hash
-    const tokenHash = await bcrypt.hash(refreshToken, 8);
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    // Store refresh token hash + session
+    const tokenHash    = await bcrypt.hash(refreshToken, 8);
+    const expiresAt    = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const tokenFamily  = uuidV4();
     await query(
       `INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
       [user.id, tokenHash, expiresAt]
+    );
+    await query(
+      `INSERT INTO user_sessions (user_id, token_family, ip_address, user_agent, expires_at)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [user.id, tokenFamily, ipAddress, userAgent, expiresAt]
     );
 
     await logAudit({
@@ -465,6 +471,93 @@ router.put('/profile', authenticate, async (req: Request, res: Response, next: N
     }
     next(err);
   }
+});
+
+// GET /api/auth/sessions — list own active sessions
+router.get('/sessions', authenticate, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const result = await query(`
+      SELECT id, ip_address, user_agent, last_seen_at, expires_at, created_at
+      FROM user_sessions
+      WHERE user_id = $1 AND revoked = false AND expires_at > NOW()
+      ORDER BY last_seen_at DESC
+    `, [req.user!.id]);
+    res.json(result.rows);
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/auth/sessions/:id — revoke a specific session (own or admin)
+router.delete('/sessions/:id', authenticate, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const result = await query(
+      `SELECT id, user_id FROM user_sessions WHERE id = $1`,
+      [req.params.id]
+    );
+    if (result.rows.length === 0) { res.status(404).json({ error: 'Session not found' }); return; }
+    const session = result.rows[0];
+    // Only admin or the session owner can revoke
+    if (session.user_id !== req.user!.id && req.user!.role !== 'admin') {
+      res.status(403).json({ error: 'Insufficient permissions' }); return;
+    }
+    await query(
+      `UPDATE user_sessions SET revoked = true, revoked_at = NOW(), revoked_by = $1 WHERE id = $2`,
+      [req.user!.id, req.params.id]
+    );
+    res.json({ message: 'Session revoked' });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/auth/sessions — revoke ALL own sessions (log out everywhere)
+router.delete('/sessions', authenticate, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    await query(
+      `UPDATE user_sessions SET revoked = true, revoked_at = NOW(), revoked_by = $1
+       WHERE user_id = $1 AND revoked = false`,
+      [req.user!.id]
+    );
+    await query('DELETE FROM refresh_tokens WHERE user_id = $1', [req.user!.id]);
+    res.json({ message: 'All sessions revoked' });
+  } catch (err) { next(err); }
+});
+
+// GET /api/auth/sessions/user/:userId — admin: see another user's sessions
+router.get('/sessions/user/:userId', authenticate, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!['admin', 'practice_manager'].includes(req.user!.role)) {
+      res.status(403).json({ error: 'Insufficient permissions' }); return;
+    }
+    const result = await query(`
+      SELECT id, ip_address, user_agent, last_seen_at, expires_at, revoked, created_at
+      FROM user_sessions
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT 50
+    `, [req.params.userId]);
+    res.json(result.rows);
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/auth/sessions/user/:userId — admin: revoke all sessions for a user
+router.delete('/sessions/user/:userId', authenticate, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (req.user!.role !== 'admin') { res.status(403).json({ error: 'Admin only' }); return; }
+    await query(
+      `UPDATE user_sessions SET revoked = true, revoked_at = NOW(), revoked_by = $1
+       WHERE user_id = $2 AND revoked = false`,
+      [req.user!.id, req.params.userId]
+    );
+    await query('DELETE FROM refresh_tokens WHERE user_id = $1', [req.params.userId]);
+    const { ipAddress, userAgent } = getClientInfo(req);
+    await logAudit({
+      user: req.user,
+      action: 'SESSIONS_REVOKED',
+      entityType: 'user',
+      entityId: req.params.userId,
+      ipAddress,
+      userAgent,
+    });
+    res.json({ message: 'All sessions revoked for user' });
+  } catch (err) { next(err); }
 });
 
 export default router;
