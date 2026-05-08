@@ -1,5 +1,52 @@
 export type Role = 'admin' | 'doctor' | 'nurse';
 
+export interface RequestTemplate {
+  id: string;
+  name: string;
+  doctor_id: string;
+  items: Array<{ inventory_item_id: string; item_name: string; quantity_requested: number; unit: string }>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StockReturn {
+  id: string;
+  return_number: string;
+  supplier_id?: string;
+  supplier_name: string;
+  status: 'draft' | 'confirmed' | 'cancelled';
+  notes?: string;
+  created_by: string;
+  created_by_name: string;
+  confirmed_by?: string;
+  confirmed_by_name?: string;
+  confirmed_at?: string;
+  created_at: string;
+  item_count?: number;
+  items?: StockReturnItem[];
+}
+
+export interface StockReturnItem {
+  id: string;
+  return_id: string;
+  inventory_item_id: string;
+  item_name: string;
+  batch_id?: string;
+  batch_number?: string;
+  quantity: number;
+  unit?: string;
+  unit_cost?: number;
+  reason?: string;
+}
+
+export interface CategoryBudget {
+  category_id: string;
+  category_name: string;
+  category_color?: string;
+  budget_amount: number;
+  actual_spend: number;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -8,6 +55,7 @@ export interface User {
   is_active: boolean;
   last_login?: string;
   must_change_password?: boolean;
+  totp_enabled?: boolean;
   created_at: string;
 }
 

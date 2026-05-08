@@ -15,6 +15,9 @@ import auditRoutes from './routes/audit';
 import categoryRoutes from './routes/categories';
 import supplierRoutes from './routes/suppliers';
 import systemRoutes from './routes/system';
+import templateRoutes from './routes/templates';
+import returnRoutes from './routes/returns';
+import budgetRoutes from './routes/budgets';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -64,7 +67,10 @@ app.use('/api/users', userRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/suppliers', supplierRoutes);
-app.use('/api/system', systemRoutes);
+app.use('/api/system',    systemRoutes);
+app.use('/api/templates', templateRoutes);
+app.use('/api/returns',   returnRoutes);
+app.use('/api/budgets',   budgetRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
 app.use(errorHandler);

@@ -3,9 +3,22 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
+import { TOTP } from 'otplib';
+
+const _totp = new TOTP();
+const authenticator = {
+  generateSecret: () => _totp.generateSecret(),
+  keyuri: (email: string, issuer: string, secret: string) =>
+    `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(email)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`,
+  verify: ({ token, secret }: { token: string; secret: string }) => {
+    try { return (_totp as unknown as { verify(o: { token: string; secret: string }): boolean }).verify({ token, secret }); } catch { return false; }
+  },
+};
+import qrcode from 'qrcode';
 import { query } from '../db';
 import { authenticate } from '../middleware/auth';
 import { logAudit, getClientInfo } from '../utils/audit';
+import { emailAccountLocked, emailAfterHoursLogin } from '../utils/email';
 
 const router = Router();
 
@@ -100,6 +113,9 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction): P
 
       const remaining = maxAttempts - attempts;
       if (remaining <= 0) {
+        // Email admins about lockout
+        const admins = await query(`SELECT email FROM users WHERE role='admin' AND is_active=true`);
+        emailAccountLocked({ adminEmails: admins.rows.map((r: { email: string }) => r.email), lockedEmail: user.email, ipAddress });
         res.status(423).json({ error: `Account locked for ${lockoutMinutes} minutes due to too many failed attempts` });
       } else {
         res.status(401).json({ error: `Invalid email or password. ${remaining} attempt(s) remaining.` });
@@ -112,6 +128,32 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction): P
       `UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_login = NOW() WHERE id = $1`,
       [user.id]
     );
+
+    // After-hours alert (before 7am or after 8pm local server time)
+    const hour = new Date().getHours();
+    if (hour < 7 || hour >= 20) {
+      const admins = await query(`SELECT email FROM users WHERE role='admin' AND is_active=true AND id != $1`, [user.id]);
+      emailAfterHoursLogin({
+        adminEmails: admins.rows.map((r: { email: string }) => r.email),
+        userName: user.name,
+        role: user.role,
+        ipAddress,
+        time: new Date().toLocaleString(),
+      });
+    }
+
+    // If 2FA is enabled, issue a short-lived totp_pending token instead of full auth
+    const fullUser = await query(`SELECT totp_enabled FROM users WHERE id=$1`, [user.id]);
+    if (fullUser.rows[0]?.totp_enabled) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const totpSession = jwt.sign(
+        { sub: user.id, type: 'totp_pending' },
+        process.env.JWT_SECRET || 'secret',
+        { expiresIn: '2m' } as any
+      );
+      res.json({ requires_totp: true, totp_session: totpSession });
+      return;
+    }
 
     const { accessToken, refreshToken } = generateTokens(user.id, user.email, user.name, user.role);
 
@@ -142,6 +184,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction): P
         name: user.name,
         role: user.role,
         mustChangePassword: user.must_change_password,
+        totp_enabled: false,
       },
     });
   } catch (err) {
@@ -297,6 +340,77 @@ router.post('/change-password', authenticate, async (req: Request, res: Response
     }
     next(err);
   }
+});
+
+// POST /api/auth/totp/complete — step 2 of login when 2FA is enabled
+router.post('/totp/complete', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { totp_session, code } = req.body;
+    if (!totp_session || !code) { res.status(400).json({ error: 'totp_session and code are required' }); return; }
+
+    let payload: { sub: string; type: string };
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      payload = jwt.verify(totp_session, process.env.JWT_SECRET || 'secret') as any;
+    } catch {
+      res.status(401).json({ error: 'TOTP session expired — please log in again' }); return;
+    }
+    if (payload.type !== 'totp_pending') { res.status(401).json({ error: 'Invalid session' }); return; }
+
+    const userResult = await query(`SELECT id, email, name, role, totp_secret, must_change_password FROM users WHERE id=$1`, [payload.sub]);
+    const user = userResult.rows[0];
+    if (!user?.totp_secret) { res.status(401).json({ error: 'TOTP not configured' }); return; }
+
+    if (!authenticator.verify({ token: code, secret: user.totp_secret })) {
+      res.status(401).json({ error: 'Invalid authenticator code' }); return;
+    }
+
+    const { accessToken, refreshToken } = generateTokens(user.id, user.email, user.name, user.role);
+    const tokenHash = await bcrypt.hash(refreshToken, 8);
+    await query(`INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1,$2,$3)`,
+      [user.id, tokenHash, new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)]);
+
+    res.json({ accessToken, refreshToken, user: { id: user.id, email: user.email, name: user.name, role: user.role, mustChangePassword: user.must_change_password, totp_enabled: true } });
+  } catch (err) { next(err); }
+});
+
+// GET /api/auth/totp/setup — generate TOTP secret + QR code URI
+router.get('/totp/setup', authenticate, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const secret = authenticator.generateSecret();
+    const otpauth = authenticator.keyuri(req.user!.email, "S.H.I.T.", secret);
+    const qrDataUrl = await qrcode.toDataURL(otpauth);
+    // Store secret (unconfirmed until /totp/verify is called)
+    await query(`UPDATE users SET totp_secret=$1, totp_enabled=false WHERE id=$2`, [secret, req.user!.id]);
+    res.json({ secret, qr_data_url: qrDataUrl, otpauth_url: otpauth });
+  } catch (err) { next(err); }
+});
+
+// POST /api/auth/totp/verify — confirm the code to enable 2FA
+router.post('/totp/verify', authenticate, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { code } = req.body;
+    const userResult = await query(`SELECT totp_secret FROM users WHERE id=$1`, [req.user!.id]);
+    const secret = userResult.rows[0]?.totp_secret;
+    if (!secret) { res.status(400).json({ error: 'Run /totp/setup first' }); return; }
+    if (!authenticator.verify({ token: code, secret })) { res.status(400).json({ error: 'Invalid code — check your authenticator app' }); return; }
+    await query(`UPDATE users SET totp_enabled=true WHERE id=$1`, [req.user!.id]);
+    res.json({ message: '2FA enabled successfully' });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/auth/totp/disable — turn off 2FA
+router.delete('/totp/disable', authenticate, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { code } = req.body;
+    const userResult = await query(`SELECT totp_secret, totp_enabled FROM users WHERE id=$1`, [req.user!.id]);
+    if (!userResult.rows[0]?.totp_enabled) { res.status(400).json({ error: '2FA is not enabled' }); return; }
+    if (!authenticator.verify({ token: code, secret: userResult.rows[0].totp_secret })) {
+      res.status(401).json({ error: 'Invalid code' }); return;
+    }
+    await query(`UPDATE users SET totp_secret=NULL, totp_enabled=false WHERE id=$1`, [req.user!.id]);
+    res.json({ message: '2FA disabled' });
+  } catch (err) { next(err); }
 });
 
 // PUT /api/auth/profile — update own name / email

@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { stringify } from 'csv-stringify/sync';
 import { query, withTransaction } from '../db';
 import { authenticate, requireAdmin } from '../middleware/auth';
 import { logAudit, getClientInfo } from '../utils/audit';
@@ -311,6 +312,36 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction): Prom
   } catch (err) {
     next(err);
   }
+});
+
+// GET /api/invoices/xero-export?from=&to= — Xero bank transactions CSV format
+router.get('/xero-export', requireAdmin, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { from = '', to = '' } = req.query as Record<string, string>;
+    const params: unknown[] = [];
+    let where = "WHERE inv.status IN ('posted','verified')";
+    if (from) { params.push(from); where += ` AND inv.invoice_date >= $${params.length}`; }
+    if (to)   { params.push(to);   where += ` AND inv.invoice_date <= $${params.length}`; }
+
+    const result = await query(`
+      SELECT
+        inv.invoice_date as "Date",
+        inv.total_value as "Amount",
+        inv.supplier_name as "Payee",
+        COALESCE(inv.notes, 'Supplier invoice') as "Description",
+        inv.invoice_number as "Reference",
+        '' as "Cheque Number",
+        'AUD' as "Currency"
+      FROM invoices inv
+      ${where}
+      ORDER BY inv.invoice_date DESC
+    `, params);
+
+    const csv = stringify(result.rows, { header: true });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="xero_export_${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csv);
+  } catch (err) { next(err); }
 });
 
 export default router;

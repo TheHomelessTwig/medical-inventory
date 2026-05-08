@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ClipboardList, Stethoscope,
   FileText, BarChart3, Users, Shield, X, LogOut, Settings,
-  Activity, ShoppingCart, Sun, Moon, UserCircle
+  Activity, ShoppingCart, Sun, Moon, UserCircle, ArrowLeftRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -23,6 +23,7 @@ const navItems: NavItem[] = [
   { to: '/pos',       label: 'Quick Charge', icon: <ShoppingCart size={18} />,  roles: ['nurse', 'admin'] },
   { to: '/requests',  label: 'Requests',     icon: <ClipboardList size={18} /> },
   { to: '/stocktakes',label: 'Stocktakes',   icon: <Activity size={18} />,      roles: ['admin', 'nurse'] },
+  { to: '/returns',   label: 'Returns',      icon: <ArrowLeftRight size={18} />, roles: ['admin', 'nurse'] },
   { to: '/invoices',  label: 'Invoices',     icon: <FileText size={18} />,      roles: ['admin'] },
   { to: '/reports',   label: 'Reports',      icon: <BarChart3 size={18} /> },
   { to: '/users',     label: 'Users',        icon: <Users size={18} />,         roles: ['admin'] },

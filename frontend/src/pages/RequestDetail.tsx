@@ -121,6 +121,17 @@ const FulfillModal: React.FC<{
     try {
       const { data } = await api.get(`/inventory/${itemId}/batches`);
       setBatchOptions(prev => ({ ...prev, [itemId]: data }));
+      // FEFO: auto-select the batch expiring soonest that still has stock
+      const today = new Date().toISOString().split('T')[0];
+      const best = (data as InventoryBatch[]).find(b =>
+        b.quantity > 0 && (!b.expiry_date || b.expiry_date >= today)
+      );
+      if (best) {
+        setValue(`items.${idx}.batch_id`, best.id);
+        setValue(`items.${idx}.batch_number`, best.batch_number);
+        if (best.lot_number) setValue(`items.${idx}.lot_number`, best.lot_number);
+        if (best.expiry_date) setValue(`items.${idx}.expiry_date`, best.expiry_date);
+      }
     } catch {/* ignore */}
   };
 

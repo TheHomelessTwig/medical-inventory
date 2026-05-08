@@ -34,10 +34,11 @@ const itemSchema = z.object({
 
 const adjustSchema = z.object({
   quantity_change: z.number(),
-  adjustment_type: z.enum(['increase', 'decrease', 'correction', 'damage', 'expiry', 'return', 'other']),
+  adjustment_type: z.enum(['increase', 'decrease', 'correction', 'damage', 'expiry', 'return', 'other', 'wastage']),
   reason: z.string().min(1),
   batch_id: z.string().uuid().optional().nullable(),
   override_negative: z.boolean().default(false),
+  wastage_reason: z.enum(['dropped','contaminated','opened_unused','incorrect_dose','expired_opened','other']).optional().nullable(),
 });
 
 // GET /api/inventory
@@ -451,11 +452,12 @@ router.post('/:id/adjust', requireAdminOrNurse, async (req: Request, res: Respon
       await client.query(`
         INSERT INTO stock_adjustments
           (inventory_item_id, batch_id, adjusted_by, adjustment_type,
-           quantity_before, quantity_change, quantity_after, reason, override_negative)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           quantity_before, quantity_change, quantity_after, reason, override_negative, wastage_reason)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       `, [
         req.params.id, body.batch_id, req.user!.id, body.adjustment_type,
         qtyBefore, body.quantity_change, qtyAfter, body.reason, body.override_negative,
+        body.wastage_reason ?? null,
       ]);
 
       const { ipAddress, userAgent } = getClientInfo(req);
@@ -515,6 +517,46 @@ router.post('/:id/batches', requireAdminOrNurse, async (req: Request, res: Respo
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/inventory/bulk — bulk archive/activate/reassign (admin only)
+router.patch('/bulk', requireAdmin, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const bulkSchema = z.object({
+      ids: z.array(z.string().uuid()).min(1).max(200),
+      action: z.enum(['archive', 'activate', 'reassign_category']),
+      category_id: z.string().uuid().optional().nullable(),
+    });
+    const body = bulkSchema.parse(req.body);
+
+    if (body.action === 'reassign_category' && body.category_id === undefined) {
+      res.status(400).json({ error: 'category_id is required for reassign_category' }); return;
+    }
+
+    let sql: string;
+    let params: unknown[];
+
+    if (body.action === 'archive') {
+      sql = `UPDATE inventory_items SET is_active=false WHERE id=ANY($1::uuid[])`;
+      params = [body.ids];
+    } else if (body.action === 'activate') {
+      sql = `UPDATE inventory_items SET is_active=true WHERE id=ANY($1::uuid[])`;
+      params = [body.ids];
+    } else {
+      sql = `UPDATE inventory_items SET category_id=$2 WHERE id=ANY($1::uuid[])`;
+      params = [body.ids, body.category_id];
+    }
+
+    const result = await query(sql + ' RETURNING id', params);
+
+    const { ipAddress, userAgent } = getClientInfo(req);
+    await logAudit({ user: req.user, action: `BULK_${body.action.toUpperCase()}`, newValues: { count: result.rowCount, action: body.action }, ipAddress, userAgent });
+
+    res.json({ message: `${result.rowCount} item(s) updated`, count: result.rowCount });
+  } catch (err) {
+    if (err instanceof z.ZodError) { res.status(400).json({ error: 'Validation failed', details: err.errors }); return; }
     next(err);
   }
 });

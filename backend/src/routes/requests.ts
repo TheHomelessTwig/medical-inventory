@@ -4,6 +4,7 @@ import { query, withTransaction } from '../db';
 import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit, getClientInfo } from '../utils/audit';
 import { createError } from '../middleware/errorHandler';
+import { emailNewRequest, emailRequestFulfilled, emailQuickCharge } from '../utils/email';
 
 const router = Router();
 router.use(authenticate);
@@ -217,6 +218,21 @@ router.post('/', requireRole('doctor', 'admin'), async (req: Request, res: Respo
     const newRequest = await query(
       'SELECT * FROM stock_requests WHERE request_number = $1', [requestNumber]
     );
+
+    // Email all active nurses
+    const nurses = await query(`SELECT email FROM users WHERE role='nurse' AND is_active=true`);
+    const nurseEmails = nurses.rows.map((r: { email: string }) => r.email);
+    if (nurseEmails.length > 0) {
+      emailNewRequest({
+        nurseEmails,
+        requestNumber,
+        doctorName: req.user!.name,
+        patientName: body.patient_name ?? undefined,
+        priority: body.priority,
+        itemCount: body.items.length,
+      });
+    }
+
     res.status(201).json(newRequest.rows[0]);
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -380,11 +396,28 @@ router.post('/:id/fulfill', requireRole('nurse', 'admin'), async (req: Request, 
     });
 
     const fulfillment = await query(
-      `SELECT sf.*, u.name as nurse_name FROM stock_fulfillments sf
+      `SELECT sf.*, u.name as nurse_name,
+              sr.doctor_id, du.email as doctor_email,
+              (SELECT json_agg(json_build_object('item_name',i.name,'quantity_used',sfi.quantity_used,'unit',i.unit))
+               FROM stock_fulfillment_items sfi JOIN inventory_items i ON sfi.inventory_item_id=i.id
+               WHERE sfi.fulfillment_id = sf.id) as items
+       FROM stock_fulfillments sf
        JOIN users u ON sf.nurse_id = u.id
+       JOIN stock_requests sr ON sf.request_id = sr.id
+       JOIN users du ON sr.doctor_id = du.id
        WHERE sf.fulfillment_number = $1`,
       [fulfillmentData]
     );
+
+    if (fulfillment.rows[0]?.doctor_email) {
+      emailRequestFulfilled({
+        doctorEmail: fulfillment.rows[0].doctor_email,
+        requestNumber: req.params.id,
+        nurseName: fulfillment.rows[0].nurse_name,
+        totalCharge: parseFloat(fulfillment.rows[0].total_charge || '0'),
+        items: fulfillment.rows[0].items || [],
+      });
+    }
 
     res.status(201).json(fulfillment.rows[0]);
   } catch (err) {
@@ -570,6 +603,18 @@ router.post('/quick-charge', requireRole('nurse', 'admin'), async (req: Request,
       return { requestId, requestNum, fulfillNum, totalCharge };
     });
 
+    // Email the doctor
+    const doc = await query(`SELECT email FROM users WHERE id=$1`, [body.doctor_id]);
+    if (doc.rows[0]?.email) {
+      emailQuickCharge({
+        doctorEmail: doc.rows[0].email,
+        requestNum: result.requestNum,
+        nurseName: req.user!.name,
+        patientName: body.patient_name ?? undefined,
+        totalCharge: result.totalCharge,
+      });
+    }
+
     res.status(201).json(result);
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -578,6 +623,43 @@ router.post('/quick-charge', requireRole('nurse', 'admin'), async (req: Request,
     }
     next(err);
   }
+});
+
+// GET /api/requests/patient-ledger?patient_ref=X — all charges for a patient
+router.get('/patient-ledger', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const ref = (req.query.patient_ref as string || '').trim();
+    if (ref.length < 2) { res.status(400).json({ error: 'patient_ref must be at least 2 characters' }); return; }
+
+    const result = await query(`
+      SELECT
+        sr.id, sr.request_number, sr.patient_name, sr.patient_ref,
+        sr.status, sr.created_at, sr.is_quick_charge,
+        u.name as doctor_name,
+        COALESCE(SUM(sf.total_charge), 0) as total_charge,
+        COUNT(DISTINCT sf.id) as fulfillment_count,
+        json_agg(DISTINCT jsonb_build_object(
+          'fulfillment_number', sf.fulfillment_number,
+          'nurse_name', nu.name,
+          'total_charge', sf.total_charge,
+          'completed_at', sf.completed_at
+        )) FILTER (WHERE sf.id IS NOT NULL) as fulfillments
+      FROM stock_requests sr
+      JOIN users u ON sr.doctor_id = u.id
+      LEFT JOIN stock_fulfillments sf ON sf.request_id = sr.id
+      LEFT JOIN users nu ON sf.nurse_id = nu.id
+      WHERE sr.patient_ref ILIKE $1 AND sr.patient_ref IS NOT NULL
+      GROUP BY sr.id, sr.request_number, sr.patient_name, sr.patient_ref, sr.status, sr.created_at, sr.is_quick_charge, u.name
+      ORDER BY sr.created_at DESC
+    `, [`%${ref}%`]);
+
+    const totals = result.rows.reduce((acc: { charges: number; requests: number }, r: { total_charge: string }) => ({
+      charges: acc.charges + parseFloat(r.total_charge || '0'),
+      requests: acc.requests + 1,
+    }), { charges: 0, requests: 0 });
+
+    res.json({ requests: result.rows, totals });
+  } catch (err) { next(err); }
 });
 
 // GET /api/requests/:id/receipt

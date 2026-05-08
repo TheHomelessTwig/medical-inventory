@@ -6,8 +6,11 @@ import { useForm } from 'react-hook-form';
 import {
   Plus, Search, Download, Upload, Package, Edit2, Archive,
   AlertTriangle, Filter, RefreshCw, ChevronLeft, ChevronRight,
-  BarChart2, X, Sliders, Barcode
+  BarChart2, X, Sliders, Barcode, Trash2, CheckSquare, Square
 } from 'lucide-react';
+import WastageModal from '../components/WastageModal';
+import { useBarcodeScan } from '../hooks/useBarcodeScan';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { format, parseISO } from 'date-fns';
 import { api, getErrorMessage } from '../api/client';
 import { InventoryItem, Category, Supplier } from '../types';
@@ -227,6 +230,9 @@ const Inventory: React.FC = () => {
   const [showAdd, setShowAdd] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [adjustItem, setAdjustItem] = useState<InventoryItem | null>(null);
+  const [wastageItem, setWastageItem] = useState<InventoryItem | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkMenu, setShowBulkMenu] = useState(false);
   const [archiveItem, setArchiveItem] = useState<InventoryItem | null>(null);
   const [formLoading, setFormLoading] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -538,9 +544,14 @@ const Inventory: React.FC = () => {
                         <td className="table-td">
                           <div className="flex items-center gap-1">
                             {(isAdmin || user?.role === 'nurse') && (
-                              <button onClick={() => setAdjustItem(item)} className="p-1.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50" title="Adjust stock">
-                                <BarChart2 size={15} />
-                              </button>
+                              <>
+                                <button onClick={() => setWastageItem(item)} className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50" title="Record wastage">
+                                  <Trash2 size={13} />
+                                </button>
+                                <button onClick={() => setAdjustItem(item)} className="p-1.5 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50" title="Adjust stock">
+                                  <BarChart2 size={15} />
+                                </button>
+                              </>
                             )}
                             {isAdmin && (
                               <>
@@ -618,6 +629,15 @@ const Inventory: React.FC = () => {
         <AdjustModal
           item={adjustItem}
           onClose={() => setAdjustItem(null)}
+          onSuccess={() => qc.invalidateQueries({ queryKey: ['inventory'] })}
+        />
+      )}
+
+      {/* Wastage modal */}
+      {wastageItem && (
+        <WastageModal
+          item={wastageItem}
+          onClose={() => setWastageItem(null)}
           onSuccess={() => qc.invalidateQueries({ queryKey: ['inventory'] })}
         />
       )}

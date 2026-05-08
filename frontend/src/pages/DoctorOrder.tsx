@@ -1,12 +1,13 @@
-import React, { useState, useMemo } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import React, { useState, useMemo, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ClipboardList, Search, Plus, Minus, Trash2, Send,
   User, Hash, ChevronDown, CheckCircle2, Package, X,
-  AlertTriangle, ChevronUp, Star
+  AlertTriangle, Star, BookOpen, Save
 } from 'lucide-react';
 import { api, getErrorMessage } from '../api/client';
-import { InventoryItem } from '../types';
+import { InventoryItem, RequestTemplate } from '../types';
+import { useBarcodeScan } from '../hooks/useBarcodeScan';
 import toast from 'react-hot-toast';
 
 // ── Fuzzy filter ──────────────────────────────────────────────────────────────
@@ -96,6 +97,7 @@ type Priority = 'low' | 'normal' | 'high' | 'urgent';
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 const DoctorOrder: React.FC = () => {
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | 'all'>('all');
   const [basket, setBasket] = useState<BasketEntry[]>([]);
@@ -105,6 +107,9 @@ const DoctorOrder: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [showBasket, setShowBasket] = useState(false);
   const [successResult, setSuccessResult] = useState<{ requestNum: string; itemCount: number } | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // All active items
   const { data: inventoryData, isLoading } = useQuery({
@@ -113,7 +118,31 @@ const DoctorOrder: React.FC = () => {
     staleTime: 60_000,
   });
 
+  // Templates
+  const { data: templates = [] } = useQuery<RequestTemplate[]>({
+    queryKey: ['templates'],
+    queryFn: async () => (await api.get('/templates')).data,
+  });
+
+  const saveTemplateMutation = useMutation({
+    mutationFn: (name: string) => api.post('/templates', {
+      name,
+      items: basket.map(e => ({ inventory_item_id: e.item.id, item_name: e.item.name, quantity_requested: e.qty, unit: e.item.unit })),
+    }),
+    onSuccess: () => { toast.success('Template saved'); qc.invalidateQueries({ queryKey: ['templates'] }); setTemplateName(''); },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   const allItems: InventoryItem[] = inventoryData?.items ?? [];
+
+  // Barcode scanner — scan populates search box and auto-adds matched item
+  useBarcodeScan({
+    onScan: (code) => {
+      const item = allItems.find(i => i.barcode === code || i.sku === code);
+      if (item) { addToBasket(item); toast.success(`Added: ${item.name}`); }
+      else { setSearch(code); searchRef.current?.focus(); }
+    },
+  });
 
   // Category list from items
   const categories = useMemo(() => {
@@ -427,6 +456,48 @@ const DoctorOrder: React.FC = () => {
               className="input resize-none"
               placeholder="Any special instructions…"
             />
+          </div>
+
+          {/* Templates */}
+          <div className="pt-1 border-t border-slate-200 dark:border-slate-700">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <button onClick={() => setShowTemplates(t => !t)} className="btn-secondary btn-sm w-full flex items-center gap-1">
+                  <BookOpen size={13} /> Load Template
+                  <ChevronDown size={11} className="ml-auto" />
+                </button>
+                {showTemplates && (
+                  <div className="absolute bottom-full left-0 mb-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                    {templates.length === 0 ? (
+                      <p className="text-xs text-slate-400 p-3">No saved templates yet</p>
+                    ) : templates.map(t => (
+                      <button key={t.id} onClick={() => {
+                        setBasket(t.items.map(ti => {
+                          const item = allItems.find(i => i.id === ti.inventory_item_id);
+                          return item ? { item, qty: ti.quantity_requested } : null;
+                        }).filter(Boolean) as BasketEntry[]);
+                        setShowTemplates(false);
+                        toast.success(`Template "${t.name}" loaded`);
+                      }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 border-b border-slate-100 dark:border-slate-700 last:border-0">
+                        <p className="font-medium text-slate-900 dark:text-slate-100">{t.name}</p>
+                        <p className="text-xs text-slate-400">{t.items.length} item{t.items.length !== 1 ? 's' : ''}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {basket.length > 0 && (
+                <div className="flex gap-1 flex-1">
+                  <input value={templateName} onChange={e => setTemplateName(e.target.value)}
+                    placeholder="Template name…" className="input text-xs flex-1 py-1.5" />
+                  <button onClick={() => templateName && saveTemplateMutation.mutate(templateName)}
+                    disabled={!templateName || saveTemplateMutation.isPending}
+                    className="btn-secondary btn-sm px-2" title="Save as template">
+                    <Save size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Summary + submit */}

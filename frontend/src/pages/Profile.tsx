@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   UserCircle, Mail, Lock, Bell, Moon, Sun,
-  Save, ChevronRight, Shield, Palette
+  Save, ChevronRight, Shield, Palette, Smartphone, CheckCircle2, XCircle
 } from 'lucide-react';
 import { api, getErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -48,6 +48,108 @@ const ToggleRow: React.FC<{ label: string; description: string; checked: boolean
     </button>
   </div>
 );
+
+// ── 2FA section ───────────────────────────────────────────────────────────────
+const TwoFactorSection: React.FC = () => {
+  const { user, refreshUser } = useAuth();
+  const [step, setStep] = useState<'idle' | 'setup' | 'disable'>('idle');
+  const [qrData, setQrData] = useState<{ qr_data_url: string; secret: string } | null>(null);
+  const [code, setCode] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const isEnabled = user?.totp_enabled;
+
+  const startSetup = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get('/auth/totp/setup');
+      setQrData(data);
+      setStep('setup');
+    } catch (err) { toast.error(getErrorMessage(err)); }
+    finally { setLoading(false); }
+  };
+
+  const verifyCode = async () => {
+    setLoading(true);
+    try {
+      await api.post('/auth/totp/verify', { code });
+      toast.success('2FA enabled! Your account is now protected.');
+      await refreshUser?.();
+      setStep('idle'); setQrData(null); setCode('');
+    } catch (err) { toast.error(getErrorMessage(err)); }
+    finally { setLoading(false); }
+  };
+
+  const disableTotp = async () => {
+    setLoading(true);
+    try {
+      await api.delete('/auth/totp/disable', { data: { code } });
+      toast.success('2FA disabled');
+      await refreshUser?.();
+      setStep('idle'); setCode('');
+    } catch (err) { toast.error(getErrorMessage(err)); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between p-4">
+        <div className="flex items-center gap-3">
+          <Smartphone size={16} className="text-slate-400" />
+          <div>
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Two-Factor Authentication</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {isEnabled ? 'Enabled — your account requires an authenticator code on login' : 'Add an authenticator app for extra security'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {isEnabled
+            ? <><CheckCircle2 size={16} className="text-emerald-500" />
+                <button onClick={() => setStep('disable')} className="btn-secondary btn-sm text-red-600 border-red-200 hover:bg-red-50">Disable</button></>
+            : <button onClick={startSetup} disabled={loading} className="btn-primary btn-sm"><Smartphone size={13} /> Enable 2FA</button>
+          }
+        </div>
+      </div>
+
+      {step === 'setup' && qrData && (
+        <div className="border-t border-slate-200 dark:border-slate-700 p-4 space-y-4 bg-slate-50 dark:bg-slate-700/30">
+          <p className="text-sm text-slate-700 dark:text-slate-300 font-medium">Scan this QR code with your authenticator app</p>
+          <div className="flex gap-6 items-start">
+            <img src={qrData.qr_data_url} alt="2FA QR code" className="w-40 h-40 border border-slate-200 rounded-lg bg-white p-1" />
+            <div className="flex-1 space-y-2">
+              <p className="text-xs text-slate-500 dark:text-slate-400">Can't scan? Enter this key manually:</p>
+              <code className="block text-xs font-mono bg-slate-100 dark:bg-slate-700 px-3 py-2 rounded break-all">{qrData.secret}</code>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Then enter the 6-digit code from your app to confirm:</p>
+              <div className="flex gap-2">
+                <input type="text" maxLength={6} value={code} onChange={e => setCode(e.target.value.replace(/\D/g,''))}
+                  placeholder="000000" className="input w-32 text-center font-mono text-lg tracking-widest" />
+                <button onClick={verifyCode} disabled={code.length !== 6 || loading} className="btn-primary">
+                  {loading ? 'Verifying…' : 'Confirm'}
+                </button>
+                <button onClick={() => { setStep('idle'); setQrData(null); setCode(''); }} className="btn-secondary">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {step === 'disable' && (
+        <div className="border-t border-slate-200 dark:border-slate-700 p-4 space-y-3 bg-red-50 dark:bg-red-900/20">
+          <p className="text-sm font-medium text-red-800 dark:text-red-300">Enter your authenticator code to disable 2FA</p>
+          <div className="flex gap-2">
+            <input type="text" maxLength={6} value={code} onChange={e => setCode(e.target.value.replace(/\D/g,''))}
+              placeholder="000000" className="input w-32 text-center font-mono text-lg tracking-widest" />
+            <button onClick={disableTotp} disabled={code.length !== 6 || loading} className="btn-danger btn-sm">
+              {loading ? 'Disabling…' : 'Disable 2FA'}
+            </button>
+            <button onClick={() => { setStep('idle'); setCode(''); }} className="btn-secondary btn-sm">Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 const Profile: React.FC = () => {
@@ -204,6 +306,9 @@ const Profile: React.FC = () => {
       {/* ── Security ────────────────────────────────────────────────────── */}
       <Section title="Security" icon={<Shield size={17} />}>
         <div className="space-y-3">
+          {/* 2FA */}
+          <TwoFactorSection />
+
           <Link
             to="/change-password"
             className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group"

@@ -400,4 +400,41 @@ router.get('/movements', async (req: Request, res: Response, next: NextFunction)
   } catch (err) { next(err); }
 });
 
+// GET /api/reports/wastage?from=&to=&format=csv
+router.get('/wastage', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { from = new Date(Date.now() - 30*24*3600*1000).toISOString().split('T')[0], to = new Date().toISOString().split('T')[0], format } = req.query as Record<string, string>;
+
+    const result = await query(`
+      SELECT
+        sa.created_at, sa.adjustment_type, sa.wastage_reason,
+        sa.quantity_change, sa.reason,
+        i.name as item_name, i.unit, i.internal_price,
+        u.name as adjusted_by_name,
+        ABS(sa.quantity_change) * COALESCE(i.internal_price, 0) as estimated_cost
+      FROM stock_adjustments sa
+      JOIN inventory_items i ON sa.inventory_item_id = i.id
+      JOIN users u ON sa.adjusted_by = u.id
+      WHERE sa.adjustment_type = 'wastage'
+        AND DATE(sa.created_at) BETWEEN $1 AND $2
+      ORDER BY sa.created_at DESC
+    `, [from, to]);
+
+    if (format === 'csv') {
+      const csv = stringify(result.rows, { header: true });
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="wastage_${from}_${to}.csv"`);
+      res.send(csv); return;
+    }
+
+    const summary = result.rows.reduce((acc: Record<string, number>, r: { wastage_reason: string; estimated_cost: string }) => {
+      const key = r.wastage_reason || 'other';
+      acc[key] = (acc[key] || 0) + parseFloat(r.estimated_cost || '0');
+      return acc;
+    }, {});
+
+    res.json({ records: result.rows, summary, total_cost: Object.values(summary).reduce((a: number, b) => a + (b as number), 0) });
+  } catch (err) { next(err); }
+});
+
 export default router;

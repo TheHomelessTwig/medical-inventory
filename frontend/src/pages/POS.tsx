@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useBarcodeScan } from '../hooks/useBarcodeScan';
 import {
   ShoppingCart, Search, Plus, Minus, Trash2, Send,
   User, Hash, ChevronDown, CheckCircle2, Package, X,
@@ -190,6 +191,15 @@ const POS: React.FC = () => {
   };
 
   const inBasket = (id: string) => basket.find(e => e.item.id === id);
+
+  // Barcode scanner support — scan matches by barcode or SKU
+  useBarcodeScan({
+    onScan: (code) => {
+      const item = allItems.find(i => i.barcode === code || i.sku === code);
+      if (item) { addToBasket(item); toast.success(`Scanned: ${item.name}`); }
+      else toast.error(`No item found for barcode: ${code}`);
+    },
+  });
 
   return (
     <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-slate-50">

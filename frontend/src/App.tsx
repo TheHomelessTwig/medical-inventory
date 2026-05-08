@@ -19,6 +19,7 @@ import Settings from './pages/Settings';
 import POS from './pages/POS';
 import DoctorOrder from './pages/DoctorOrder';
 import Profile from './pages/Profile';
+import Returns from './pages/Returns';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; roles?: string[] }> = ({
   children, roles,
@@ -97,6 +98,11 @@ function App() {
             </ProtectedRoute>
           } />
           <Route path="profile" element={<Profile />} />
+          <Route path="returns" element={
+            <ProtectedRoute roles={['admin', 'nurse']}>
+              <Returns />
+            </ProtectedRoute>
+          } />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -16,7 +16,7 @@ import toast from 'react-hot-toast';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#64748b'];
 
-type ReportTab = 'overview' | 'usage' | 'expiring' | 'low-stock' | 'valuation' | 'movements' | 'invoices';
+type ReportTab = 'overview' | 'usage' | 'expiring' | 'low-stock' | 'valuation' | 'movements' | 'invoices' | 'wastage' | 'patient-ledger';
 
 const Reports: React.FC = () => {
   const [tab, setTab] = useState<ReportTab>('overview');
@@ -64,6 +64,20 @@ const Reports: React.FC = () => {
     enabled: tab === 'invoices',
   });
 
+  const { data: wastageReport, isLoading: wastageLoading } = useQuery({
+    queryKey: ['report-wastage', dateFrom, dateTo],
+    queryFn: async () => (await api.get(`/reports/wastage?from=${dateFrom}&to=${dateTo}`)).data,
+    enabled: tab === 'wastage',
+  });
+
+  const [patientRef, setPatientRef] = useState('');
+  const [patientSearch, setPatientSearch] = useState('');
+  const { data: patientLedger, isLoading: patientLoading, refetch: searchPatient } = useQuery({
+    queryKey: ['patient-ledger', patientSearch],
+    queryFn: async () => (await api.get(`/requests/patient-ledger?patient_ref=${encodeURIComponent(patientSearch)}`)).data,
+    enabled: patientSearch.length >= 2,
+  });
+
   const handleExport = async (endpoint: string, filename: string, params = '') => {
     try {
       const res = await api.get(`${endpoint}?format=csv&from=${dateFrom}&to=${dateTo}${params}`, { responseType: 'blob' });
@@ -77,6 +91,8 @@ const Reports: React.FC = () => {
   const tabs: { key: ReportTab; label: string; icon: React.ReactNode }[] = [
     { key: 'overview', label: 'Overview', icon: <BarChart3 size={15} /> },
     { key: 'usage', label: 'Usage', icon: <TrendingUp size={15} /> },
+    { key: 'wastage', label: 'Wastage', icon: <AlertTriangle size={15} /> },
+    { key: 'patient-ledger', label: 'Patient Ledger', icon: <Users size={15} /> },
     { key: 'expiring', label: 'Expiring', icon: <Clock size={15} /> },
     { key: 'low-stock', label: 'Low Stock', icon: <TrendingDown size={15} /> },
     { key: 'valuation', label: 'Valuation', icon: <DollarSign size={15} /> },
@@ -511,6 +527,127 @@ const Reports: React.FC = () => {
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+      )}
+      {/* ── Wastage ──────────────────────────────────────────────────────────── */}
+      {tab === 'wastage' && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="font-semibold text-slate-900 dark:text-slate-100">Wastage Record</h3>
+            <button onClick={() => handleExport('/reports/wastage', 'wastage')} className="btn-secondary btn-sm">
+              <Download size={14} /> Export CSV
+            </button>
+          </div>
+          {wastageLoading ? <LoadingSpinner /> : !wastageReport ? null : (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {Object.entries(wastageReport.summary || {}).map(([reason, cost]) => (
+                  <div key={reason} className="card p-4">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 uppercase mb-1 capitalize">{reason.replace(/_/g, ' ')}</p>
+                    <p className="text-lg font-bold text-red-600">${Number(cost).toFixed(2)}</p>
+                  </div>
+                ))}
+                <div className="card p-4 border-red-200 bg-red-50 dark:bg-red-900/20">
+                  <p className="text-xs text-red-600 dark:text-red-400 uppercase mb-1">Total Cost</p>
+                  <p className="text-lg font-bold text-red-700 dark:text-red-400">${Number(wastageReport.total_cost || 0).toFixed(2)}</p>
+                </div>
+              </div>
+              <div className="card overflow-hidden">
+                <table className="w-full">
+                  <thead><tr>
+                    <th className="table-th">Date</th>
+                    <th className="table-th">Item</th>
+                    <th className="table-th">Reason</th>
+                    <th className="table-th text-right">Qty</th>
+                    <th className="table-th text-right">Est. Cost</th>
+                    <th className="table-th">Recorded by</th>
+                  </tr></thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
+                    {wastageReport.records?.map((r: { created_at: string; item_name: string; unit: string; wastage_reason: string; quantity_change: number; estimated_cost: number; adjusted_by_name: string }) => (
+                      <tr key={r.created_at + r.item_name}>
+                        <td className="table-td text-xs">{format(new Date(r.created_at), 'dd MMM HH:mm')}</td>
+                        <td className="table-td font-medium">{r.item_name}</td>
+                        <td className="table-td"><span className="badge bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 capitalize">{String(r.wastage_reason || 'other').replace(/_/g, ' ')}</span></td>
+                        <td className="table-td text-right">{Math.abs(r.quantity_change)} {r.unit}</td>
+                        <td className="table-td text-right text-red-600">${Number(r.estimated_cost || 0).toFixed(2)}</td>
+                        <td className="table-td text-xs text-slate-500">{r.adjusted_by_name}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Patient Ledger ───────────────────────────────────────────────────── */}
+      {tab === 'patient-ledger' && (
+        <div className="space-y-4">
+          <div className="flex gap-3">
+            <input
+              type="text"
+              placeholder="Search by patient name or reference (min. 2 chars)…"
+              value={patientRef}
+              onChange={e => setPatientRef(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && patientRef.length >= 2 && setPatientSearch(patientRef)}
+              className="input flex-1"
+            />
+            <button
+              onClick={() => setPatientSearch(patientRef)}
+              disabled={patientRef.length < 2}
+              className="btn-primary"
+            >
+              Search
+            </button>
+          </div>
+
+          {patientSearch && patientLoading && <LoadingSpinner />}
+          {patientLedger && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="card p-4">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 uppercase mb-1">Total Requests</p>
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{patientLedger.totals?.requests || 0}</p>
+                </div>
+                <div className="card p-4">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 uppercase mb-1">Total Charges</p>
+                  <p className="text-2xl font-bold text-emerald-600">${Number(patientLedger.totals?.charges || 0).toFixed(2)}</p>
+                </div>
+              </div>
+              <div className="card overflow-hidden">
+                <table className="w-full">
+                  <thead><tr>
+                    <th className="table-th">Ref #</th>
+                    <th className="table-th">Patient</th>
+                    <th className="table-th">Doctor</th>
+                    <th className="table-th">Date</th>
+                    <th className="table-th">Type</th>
+                    <th className="table-th text-right">Charge</th>
+                  </tr></thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
+                    {patientLedger.requests?.map((r: { id: string; request_number: string; patient_name?: string; patient_ref?: string; doctor_name: string; created_at: string; is_quick_charge: boolean; total_charge: string }) => (
+                      <tr key={r.id}>
+                        <td className="table-td font-mono text-xs">{r.request_number}</td>
+                        <td className="table-td">
+                          <p className="font-medium text-slate-900 dark:text-slate-100">{r.patient_name || '—'}</p>
+                          <p className="text-xs text-slate-400">{r.patient_ref}</p>
+                        </td>
+                        <td className="table-td text-sm">{r.doctor_name}</td>
+                        <td className="table-td text-xs">{format(new Date(r.created_at), 'dd MMM yyyy')}</td>
+                        <td className="table-td">
+                          <span className={`badge ${r.is_quick_charge ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {r.is_quick_charge ? 'Quick Charge' : 'Request'}
+                          </span>
+                        </td>
+                        <td className="table-td text-right font-semibold">${Number(r.total_charge || 0).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       )}

@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Package, ClipboardList, AlertTriangle, TrendingUp,
-  DollarSign, Activity, ArrowRight, Clock, CheckCircle
+  DollarSign, Activity, ArrowRight, Clock, CheckCircle, PieChart as PieIcon
 } from 'lucide-react';
+import { CategoryBudget } from '../types';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar
@@ -326,6 +327,61 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Budget widget */}
+      <BudgetWidget />
+    </div>
+  );
+};
+
+// ── Budget widget ─────────────────────────────────────────────────────────────
+const BudgetWidget: React.FC = () => {
+  const month = new Date().toISOString().slice(0, 7);
+  const { data: budgets = [] } = useQuery<CategoryBudget[]>({
+    queryKey: ['budgets', month],
+    queryFn: async () => (await import('../api/client').then(m => m.api)).get(`/budgets?month=${month}`).then(r => r.data),
+    staleTime: 60_000,
+  });
+
+  const withBudget = budgets.filter(b => Number(b.budget_amount) > 0);
+  if (withBudget.length === 0) return null;
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+          <PieIcon size={16} className="text-indigo-500" /> Monthly Budget
+          <span className="text-xs font-normal text-slate-400 dark:text-slate-500">{new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+        </h3>
+        <Link to="/reports" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">Full reports →</Link>
+      </div>
+      <div className="space-y-3">
+        {withBudget.map(b => {
+          const pct = Math.min(100, Number(b.budget_amount) > 0 ? (Number(b.actual_spend) / Number(b.budget_amount)) * 100 : 0);
+          const over = pct >= 100;
+          const warn = pct >= 80;
+          return (
+            <div key={b.category_id}>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full" style={{ background: b.category_color || '#94a3b8' }} />
+                  <span className="font-medium text-slate-700 dark:text-slate-300">{b.category_name}</span>
+                </span>
+                <span className={over ? 'text-red-600 font-semibold' : warn ? 'text-amber-600' : 'text-slate-500 dark:text-slate-400'}>
+                  ${Number(b.actual_spend).toFixed(0)} / ${Number(b.budget_amount).toFixed(0)}
+                </span>
+              </div>
+              <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${over ? 'bg-red-500' : warn ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">Set budgets in Settings → Categories</p>
     </div>
   );
 };
