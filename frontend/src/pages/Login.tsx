@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { Stethoscope, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getErrorMessage } from '../api/client';
+import { useBranding } from '../hooks/useBranding';
 import toast from 'react-hot-toast';
 
 interface LoginForm {
@@ -14,6 +15,7 @@ interface LoginForm {
 const Login: React.FC = () => {
   const { login, user, isLoading } = useAuth();
   const navigate = useNavigate();
+  const branding = useBranding();
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState('');
@@ -45,8 +47,12 @@ const Login: React.FC = () => {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 shadow-lg" style={{ backgroundColor: 'var(--accent)' }}>
             <Stethoscope size={32} className="text-white" />
           </div>
-          <h1 className="text-5xl font-black text-white tracking-widest">S.H.I.T.</h1>
-          <p className="text-blue-300 font-medium mt-1 text-sm tracking-wide">Sam's Helpful Inventory Tracker</p>
+          <h1 className="text-4xl font-black text-white tracking-widest break-words max-w-xs mx-auto">
+            {branding.practice_name}
+          </h1>
+          {branding.practice_tagline && (
+            <p className="text-blue-300 font-medium mt-1 text-sm tracking-wide">{branding.practice_tagline}</p>
+          )}
         </div>
 
         {/* Card */}
@@ -135,6 +141,11 @@ const Login: React.FC = () => {
             ))}
           </div>
         </div>
+
+        {/* Copyright */}
+        <p className="mt-5 text-center text-slate-600 text-xs">
+          &copy; <a href="https://github.com/TheHomelessTwig" target="_blank" rel="noopener noreferrer" className="hover:text-slate-400 transition-colors">TheHomelessTwig</a>
+        </p>
       </div>
     </div>
   );

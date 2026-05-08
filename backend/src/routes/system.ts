@@ -1,8 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import fs from 'fs';
 import path from 'path';
+import { z } from 'zod';
 import { authenticate, requireAdmin } from '../middleware/auth';
 import { query } from '../db';
+import { logAudit, getClientInfo } from '../utils/audit';
 
 const router = Router();
 
@@ -53,6 +55,51 @@ router.get('/status', authenticate, requireAdmin, async (_req: Request, res: Res
       environment: process.env.NODE_ENV || 'development',
     });
   } catch (err) { next(err); }
+});
+
+// GET /api/system/branding — public (needed on the login screen before auth)
+router.get('/branding', async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const result = await query(`SELECT practice_name, practice_tagline FROM system_config WHERE id = 1`);
+    if (result.rows.length === 0) {
+      res.json({ practice_name: "S.H.I.T.", practice_tagline: "Sam's Helpful Inventory Tracker" });
+      return;
+    }
+    res.json(result.rows[0]);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/system/branding — admin only
+router.put('/branding', authenticate, requireAdmin, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const brandingSchema = z.object({
+      practice_name:    z.string().min(1).max(255),
+      practice_tagline: z.string().max(255),
+    });
+    const body = brandingSchema.parse(req.body);
+
+    const result = await query(`
+      UPDATE system_config
+      SET practice_name = $1, practice_tagline = $2, updated_at = NOW(), updated_by = $3
+      WHERE id = 1
+      RETURNING practice_name, practice_tagline, updated_at
+    `, [body.practice_name, body.practice_tagline, req.user!.id]);
+
+    const { ipAddress, userAgent } = getClientInfo(req);
+    await logAudit({
+      user: req.user,
+      action: 'BRANDING_UPDATED',
+      entityType: 'system',
+      newValues: body,
+      ipAddress,
+      userAgent,
+    });
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    if (err instanceof z.ZodError) { res.status(400).json({ error: err.errors[0].message }); return; }
+    next(err);
+  }
 });
 
 export default router;

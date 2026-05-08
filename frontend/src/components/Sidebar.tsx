@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useBranding } from '../hooks/useBranding';
 import toast from 'react-hot-toast';
 
 interface NavItem {
@@ -47,6 +48,7 @@ interface SidebarProps { onClose?: () => void }
 const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
   const { user, logout } = useAuth();
   const { mode, toggleMode } = useTheme();
+  const branding = useBranding();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -64,12 +66,18 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
       {/* Logo */}
       <div className="flex items-center justify-between px-5 h-16 border-b border-slate-700/50">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--accent)' }}>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--accent)' }}>
             <Stethoscope size={16} className="text-white" />
           </div>
-          <div>
-            <div className="text-white font-black text-sm leading-none tracking-widest">S.H.I.T.</div>
-            <div className="text-slate-400 text-xs leading-none mt-0.5">Sam's Inventory</div>
+          <div className="min-w-0">
+            <div className="text-white font-black text-sm leading-none tracking-widest truncate" title={branding.practice_name}>
+              {branding.practice_name}
+            </div>
+            {branding.practice_tagline && (
+              <div className="text-slate-400 text-xs leading-none mt-0.5 truncate" title={branding.practice_tagline}>
+                {branding.practice_tagline}
+              </div>
+            )}
           </div>
         </div>
         {onClose && (
@@ -143,6 +151,19 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
             <LogOut size={16} />
             Sign out
           </button>
+
+          {/* Copyright */}
+          <p className="text-center text-slate-600 text-xs pt-1">
+            &copy;{' '}
+            <a
+              href="https://github.com/TheHomelessTwig"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-slate-400 transition-colors"
+            >
+              TheHomelessTwig
+            </a>
+          </p>
         </div>
       )}
     </div>

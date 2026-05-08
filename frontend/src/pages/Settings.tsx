@@ -699,6 +699,86 @@ const ClinicTheme: React.FC = () => {
   );
 };
 
+// ─── Branding section ─────────────────────────────────────────────────────────
+const BrandingSection: React.FC = () => {
+  const qc = useQueryClient();
+  const { register, handleSubmit, reset, formState: { isDirty } } = useForm<{ practice_name: string; practice_tagline: string }>();
+  const [saving, setSaving] = useState(false);
+
+  const { data: branding, isLoading } = useQuery<{ practice_name: string; practice_tagline: string }>({
+    queryKey: ['branding'],
+    queryFn: async () => (await api.get('/system/branding')).data,
+    staleTime: 60_000,
+  });
+
+  // Pre-fill form once data arrives
+  React.useEffect(() => {
+    if (branding) reset(branding);
+  }, [branding, reset]);
+
+  const handleSave = async (data: { practice_name: string; practice_tagline: string }) => {
+    setSaving(true);
+    try {
+      await api.put('/system/branding', data);
+      qc.invalidateQueries({ queryKey: ['branding'] });
+      toast.success('Branding updated');
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (isLoading) return null;
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+        <h3 className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+          <Paintbrush size={16} className="text-slate-400" />
+          Branding
+        </h3>
+        <p className="text-xs text-slate-500 mt-0.5">
+          Customise the name shown on the login screen and in the sidebar.
+        </p>
+      </div>
+      <form onSubmit={handleSubmit(handleSave)} className="p-5 space-y-4">
+        <div>
+          <label className="label">Display name</label>
+          <input
+            {...register('practice_name', { required: true })}
+            className="input"
+            placeholder="e.g. City Medical Inventory"
+          />
+          <p className="text-xs text-slate-400 mt-1">Shown large on the login screen and in the sidebar header.</p>
+        </div>
+        <div>
+          <label className="label">Tagline <span className="text-slate-400 font-normal">(optional)</span></label>
+          <input
+            {...register('practice_tagline')}
+            className="input"
+            placeholder="e.g. City Medical Practice"
+          />
+          <p className="text-xs text-slate-400 mt-1">Smaller subtitle shown below the display name. Leave blank to hide.</p>
+        </div>
+        <div className="flex items-center justify-between pt-1">
+          <p className="text-xs text-slate-400">
+            Changes take effect immediately — no restart required.
+          </p>
+          <button
+            type="submit"
+            disabled={saving || !isDirty}
+            className="btn-primary flex items-center gap-2 text-sm"
+          >
+            <Save size={14} />
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
 // ─── Main Settings page ───────────────────────────────────────────────────────
 const Settings: React.FC = () => {
   const { user } = useAuth();
@@ -715,6 +795,7 @@ const Settings: React.FC = () => {
 
       <SystemInfo />
 
+      {isAdmin && <BrandingSection />}
       {isAdmin && <UpdateGuide />}
       {isAdmin && <ClinicTheme />}
 
