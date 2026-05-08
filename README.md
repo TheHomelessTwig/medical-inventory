@@ -79,19 +79,34 @@ A self-contained, open-source inventory management system built for small-to-med
 | **Stock tracking** | Real-time quantities, reorder alerts, expiry warnings, batch/lot numbers |
 | **Doctor ordering** | POS-style grid to request stock from nurses — with saved templates |
 | **Nurse quick charge** | Charge stock directly against a patient/doctor — with saved templates |
-| **Fulfilment workflow** | Nurses accept → fulfil → doctor gets a copyable clinical note |
+| **Fulfilment workflow** | Nurses accept → fulfil → doctor gets a copyable clinical note + printable labels |
+| **Dispensing labels** | PDF label sheets (Avery L7163) with patient, drug, batch, expiry, nurse, doctor |
 | **Wastage recording** | Record dropped, contaminated, or unused stock with reason tracking |
 | **Returns to supplier** | Draft → confirm workflow that restores stock levels |
-| **Stocktakes** | Full/cycle/partial stocktakes with printable count sheets |
+| **Purchase orders** | Full PO workflow: draft → sent → received; auto-emails supplier; updates stock |
+| **Auto reorder** | Per-item flag: automatically creates a draft PO when stock hits the reorder threshold |
+| **Stock transfers** | Move stock between clinic sites with a dispatch → receive workflow and full audit trail |
+| **Recall management** | Record supplier recalls, quarantine affected batches, export patient impact list |
+| **Stocktakes** | Full/cycle/partial stocktakes with printable count sheets; scheduled auto-creation |
 | **Supplier invoices** | Record incoming stock and update levels in one step |
-| **Reports** | Usage, wastage, patient ledger, revenue, budgets — all with CSV export |
+| **Reports** | Usage, wastage, patient ledger, revenue, budgets, BAS/GST — all with CSV export |
+| **GST / BAS export** | Australian quarterly BAS summary: purchases, supplies, input tax credits, net GST |
 | **Xero export** | Invoice data in Xero bank transactions format |
 | **Budget tracking** | Monthly spend vs budget per category with dashboard widget |
-| **Email notifications** | New requests, fulfilments, account lockouts, weekly summaries |
+| **Email notifications** | New requests, fulfilments, expiry alerts, recalls, account lockouts, weekly summaries |
+| **Outbound webhooks** | Push events to any HTTPS endpoint; HMAC-signed; automatic retry with backoff |
 | **Barcode scanning** | USB/Bluetooth scanner support on POS and inventory screens |
-| **PWA** | Installable on tablets and phones, works like a native app |
+| **Controlled drug register** | Schedule 8 / S4 flag, witness fields on dispensing, CSV register export |
+| **Multi-site support** | Assign staff and inventory to locations; stock transfers between sites |
+| **Item photos** | Upload a photo per item for shelf identification |
+| **File attachments** | Attach PDFs/images to invoices, returns, and purchase orders |
+| **PWA + offline queue** | Installable on tablets/phones; fulfilments queued offline, synced when reconnected |
 | **2FA** | TOTP two-factor authentication (Google Authenticator / Authy) |
+| **Session management** | View and revoke active login sessions per user; admin can force sign-out |
+| **Role granularity** | 6 roles: Admin, Doctor, Nurse, Practice Manager, Receptionist, Locum Doctor |
 | **Dark mode + theming** | Full dark mode; 8 accent colour presets + custom colour picker |
+| **Custom branding** | Set your clinic's own display name and tagline from Settings |
+| **Data retention** | Configurable audit log archiving and patient data anonymisation (Privacy Act) |
 | **Audit trail** | Every action logged with user, timestamp, and before/after values |
 
 ---
@@ -157,23 +172,31 @@ Three demo accounts are seeded automatically. **Change all passwords immediately
 
 ## User Roles
 
-| | Admin | Doctor | Nurse |
-|---|:---:|:---:|:---:|
-| Inventory (view) | ✓ | ✓ | ✓ |
-| Inventory (edit/adjust/wastage) | ✓ | ✗ | ✓ |
-| New Order screen (POS) | ✓ | ✓ | ✗ |
-| Quick Charge screen (POS) | ✓ | ✗ | ✓ |
-| Order/charge templates | ✓ | ✓ | ✓ |
-| Requests (view own) | ✓ | ✓ | ✓ |
-| Requests (fulfil/accept) | ✓ | ✗ | ✓ |
-| Stocktakes | ✓ | ✗ | ✓ |
-| Returns to supplier | ✓ | ✗ | ✓ |
-| Invoices | ✓ | ✗ | ✗ |
-| Reports | ✓ | ✓* | ✗ |
-| Budgets | ✓ | ✗ | ✗ |
-| Users / Audit / Settings | ✓ | ✗ | ✗ |
+Six roles with distinct access levels:
 
-*Doctors see usage reports for their own requests only.
+| Capability | Admin | Doctor | Nurse | Practice Mgr | Receptionist | Locum Dr |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| Inventory (view) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Inventory (edit/adjust/wastage) | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ |
+| Item photos | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ |
+| New Order (POS) | ✓ | ✓ | ✗ | ✗ | ✗ | ✓ |
+| Quick Charge (POS) | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ |
+| Order/charge templates | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ |
+| Requests (view) | ✓ | own | ✓ | ✓ | ✗ | own |
+| Requests (fulfil/accept) | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ |
+| Stocktakes | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ |
+| Stock transfers | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ |
+| Returns to supplier | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ |
+| Purchase orders | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ |
+| Recalls | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ |
+| Invoices | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ |
+| Reports | ✓ | ✓* | ✓* | ✓ | ✗ | ✓* |
+| Patient Ledger | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Budgets | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ |
+| Users / Audit / Settings | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ |
+| Webhooks / Retention | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+
+\* Limited to data relevant to their own activity. Locum accounts have an optional expiry date.
 
 ---
 
@@ -270,6 +293,76 @@ Visit the app in Chrome/Edge/Safari on any device and install it:
 
 Shortcuts are suppressed when typing inside a form field.
 
+### Dispensing Labels (PDF)
+After any fulfilment a **🏷️ Print Labels** button appears on the receipt. It opens an A4 PDF sheet of adhesive labels (Avery L7163 / 99×57mm, 10 per page) pre-filled with:
+- Practice name
+- Patient name and reference
+- Drug name, quantity dispensed
+- Batch number and expiry date
+- Dispensing nurse and doctor name
+- Date dispensed
+
+Labels can also be generated from the API directly for integrations.
+
+### Recall Management
+When a supplier issues a batch recall:
+1. **Recalls → New Recall** — enter the title, severity, and affected batch numbers
+2. The system immediately finds all matching batches in your stock and all patients who received them
+3. **Quarantine** writes off all affected stock in one click and creates adjustment records
+4. **Export Patient List** generates a CSV of every dispensing event for regulatory submission
+5. Admins are emailed immediately on recall creation with a severity-coloured alert
+
+### Stock Transfers
+Move stock between clinic locations with a full paper trail:
+1. **Stock Transfers → New Transfer** — choose source and destination site, add items
+2. **Dispatch** — deducts stock from the source site
+3. **Receive** — adds stock at the destination site
+4. Both steps create adjustment records in the audit log
+
+### Auto Reorder
+Enable per item in **Inventory → Edit Item → Auto Reorder**:
+- When stock falls to or below the reorder threshold during a fulfilment, a draft PO is automatically created for the item's default supplier
+- The `Reorder Quantity` field overrides the default (2× threshold)
+- Skips if an open PO for that item already exists
+- Admin reviews and sends the PO when ready
+
+### Scheduled Stocktakes
+Configure recurring stocktakes so sessions create themselves automatically:
+- **Settings → Stocktake Schedules**: set name, frequency (weekly/monthly/quarterly), day, and type
+- On the scheduled date, the system creates the stocktake session and emails nursing staff
+- Nurses log in and count — no manual session creation needed
+
+### GST / BAS Export (Australian practices)
+**Reports → BAS / GST** generates a quarterly summary:
+- **Taxable purchases**: from posted invoices (G10/G11)
+- **Taxable supplies**: from dispensing charges with GST-applicable items
+- **Input tax credits** (G20) and **GST collected**
+- **Net GST payable** = GST collected − input tax credits
+- Monthly breakdown table + CSV export for BAS lodgement
+
+### Outbound Webhooks
+Push real-time events to any HTTPS endpoint (practice management software, Zapier, custom scripts):
+- **Settings → Webhooks**: add URL, select events, get a signing secret
+- Payloads are HMAC-SHA256 signed (`X-SHIT-Signature` header) for verification
+- Automatic retry with exponential backoff (1m → 5m → 30m → 2h → 8h, max 5 attempts)
+- **Test ping** button to verify connectivity before going live
+
+**Available events:**
+`stock.low` · `stock.expired` · `request.created` · `request.fulfilled` · `invoice.posted` · `purchase_order.received` · `stocktake.completed` · `recall.created` · `transfer.received`
+
+### Item Photos
+Upload a photo to any inventory item (JPEG, PNG, WebP):
+- Admin: **Inventory → Edit Item → Upload Photo**
+- Stored in the uploads volume alongside other attachments
+- Helps nursing staff identify the correct item on the shelf, especially for similar-looking medications
+
+### Automated Expiry Write-off
+Every night at 1am the system scans for batches where `expiry_date < today` and `quantity > 0`:
+- Creates `adjustment_type = 'expiry'` records for each expired batch
+- Zeroes the batch quantity and deducts from the item's stock level
+- Emails admins a summary of what was written off
+- Records appear in the audit log and wastage report
+
 ### Dark Mode & Theming
 - **Dark mode toggle** in the sidebar (bottom) and My Account page
 - **8 accent colour presets**: Blue, Indigo, Violet, Rose, Amber, Emerald, Cyan, Slate
@@ -277,6 +370,12 @@ Shortcuts are suppressed when typing inside a form field.
 - Admin can set the clinic-wide colour in Settings → Clinic Theme
 - Each user can override on their own profile page
 - All preferences saved to browser localStorage
+
+### Custom Branding
+Set your practice's own name in **Settings → Branding**:
+- **Display name** — shown large on the login screen and in the sidebar
+- **Tagline** — smaller subtitle; leave blank to hide
+- Changes take effect immediately for all users without a restart
 
 ---
 
@@ -528,7 +627,9 @@ All configuration in `.env`. Copy `.env.example` as a starting point.
 | `SMTP_PASS` | *(optional)* | SMTP password |
 | `SMTP_FROM` | `S.H.I.T. <noreply@clinic.local>` | From address shown on emails |
 | `APP_URL` | `http://localhost:3000` | Base URL used in email links |
-| `REPORT_TIMEZONE` | `UTC` | Timezone for weekly report schedule (IANA name) |
+| `REPORT_TIMEZONE` | `UTC` | Timezone for all scheduled jobs (IANA name, e.g. `Australia/Sydney`) |
+| `UPLOAD_DIR` | `/uploads` | File attachment storage path inside the container |
+| `BACKUP_DIR` | `/opt/medinv/backups` | Directory scanned by the weekly backup integrity check |
 
 > **Never commit `.env` to version control.** It is excluded by `.gitignore`.
 
@@ -567,7 +668,17 @@ SMTP_PASS=your_password
 REPORT_TIMEZONE=Australia/Sydney   # or America/New_York, Europe/London, etc.
 ```
 
-Reports fire every **Monday at 8am** in the configured timezone.
+Scheduled jobs use the configured timezone:
+
+| Job | Schedule |
+|---|---|
+| Weekly usage + low-stock report | Monday 08:00 |
+| Daily expiry alerts | Daily 08:00 |
+| Nightly expired-batch write-off | Daily 01:00 |
+| Nightly data retention / archiving | Daily 03:00 |
+| Scheduled stocktake creation | Daily 07:00 |
+| Weekly backup integrity check | Sunday 04:00 |
+| Webhook retry queue | Every 2 minutes |
 
 ---
 
@@ -692,34 +803,53 @@ medical-inventory/
 │
 ├── backend/
 │   └── src/
-│       ├── app.ts                  # Express setup (routes, middleware)
-│       ├── index.ts                # Entry point + cron job start
+│       ├── app.ts                  # Express setup (all routes, middleware)
+│       ├── index.ts                # Entry point, migration runner, cron start
 │       ├── db.ts                   # PostgreSQL pool + withTransaction()
-│       ├── schema.sql              # Complete DB schema (single source of truth)
+│       ├── schema.sql              # Complete DB schema (fresh installs)
 │       ├── seed.sql                # Demo data
+│       ├── db/
+│       │   ├── migrate.ts          # Migration runner (runs on startup)
+│       │   └── migrations/         # Incremental SQL files (0001–0021)
 │       ├── jobs/
-│       │   └── scheduledReports.ts # Weekly email report (node-cron)
+│       │   ├── scheduledReports.ts # Weekly report, daily expiry alerts, backup check
+│       │   ├── retentionJob.ts     # Nightly audit log archiving + patient anonymisation
+│       │   ├── expiryWriteoff.ts   # Nightly expired-batch write-off
+│       │   ├── stocktakeScheduler.ts # Scheduled stocktake auto-creation
+│       │   └── webhookRetry.ts     # Webhook delivery retry queue (every 2 min)
 │       ├── middleware/
-│       │   ├── auth.ts             # JWT verify, requireRole helpers
+│       │   ├── auth.ts             # JWT verify, requireRole, locum expiry check
 │       │   └── errorHandler.ts
 │       ├── routes/
-│       │   ├── auth.ts             # Login, refresh, 2FA (TOTP), profile
-│       │   ├── inventory.ts        # CRUD, adjust, wastage, bulk ops, CSV
+│       │   ├── auth.ts             # Login, refresh, 2FA, profile, session management
+│       │   ├── inventory.ts        # CRUD, adjust, wastage, bulk ops, photos, CSV
 │       │   ├── requests.ts         # Doctor requests, nurse fulfilment, quick charge, patient ledger
 │       │   ├── templates.ts        # Saved order/charge templates (all roles)
 │       │   ├── returns.ts          # Returns to supplier
+│       │   ├── transfers.ts        # Stock transfers between sites
+│       │   ├── recalls.ts          # Recall management + patient impact report
+│       │   ├── purchaseOrders.ts   # PO workflow (draft → sent → received)
 │       │   ├── budgets.ts          # Monthly category budgets
 │       │   ├── stocktakes.ts       # Stocktake sessions + CSV export
+│       │   ├── stocktakeSchedules.ts # Scheduled stocktake configuration
 │       │   ├── invoices.ts         # Supplier invoices + Xero export
-│       │   ├── reports.ts          # Usage, wastage, patient ledger, movements
-│       │   ├── users.ts            # User management (admin)
+│       │   ├── reports.ts          # Usage, wastage, patient ledger, BAS, movements
+│       │   ├── labels.ts           # Dispensing label PDF generation
+│       │   ├── attachments.ts      # File uploads for invoices/returns/POs/items
+│       │   ├── sites.ts            # Multi-site management
+│       │   ├── retention.ts        # Data retention config + DB size monitor
+│       │   ├── webhooks.ts         # Outbound webhook subscriptions + delivery log
+│       │   ├── users.ts            # User management (admin + practice_manager)
 │       │   ├── audit.ts            # Audit log
 │       │   ├── categories.ts       # Category CRUD
 │       │   ├── suppliers.ts        # Supplier CRUD
-│       │   └── system.ts           # Version, health, status
+│       │   └── system.ts           # Version, health, status, branding config
 │       └── utils/
 │           ├── audit.ts            # logAudit() helper
-│           └── email.ts            # Nodemailer wrapper + typed email functions
+│           ├── email.ts            # Nodemailer wrapper + typed email functions
+│           ├── webhooks.ts         # emitWebhookEvent() + HMAC signing + delivery
+│           ├── autoReorder.ts      # checkAutoReorder() — auto-draft PO on low stock
+│           └── pdfLabels.ts        # pdfkit label sheet generator
 │
 ├── frontend/
 │   └── src/

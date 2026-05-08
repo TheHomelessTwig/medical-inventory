@@ -98,7 +98,19 @@ Go to **Settings** and use the **Categories** and **Suppliers** sections. Catego
    - **Dispense Step** — controls the +/− increment on the POS ordering screens (e.g., `5` for items sold in packs of 5)
    - **Storage Location** — free text (e.g., "Fridge 2", "Cabinet A-3")
    - **Requires Batch/Lot Tracking** — if enabled, nurses must specify a batch when fulfilling
+   - **Controlled Drug** — tick if the item is a Schedule 4 or Schedule 8 substance; select the schedule code
+   - **Auto Reorder** — tick to automatically create a draft purchase order when stock hits the threshold
+   - **Reorder Quantity** — how much to order when auto-reorder triggers (default: 2× the reorder threshold)
 3. Save
+
+### Adding Item Photos
+
+A photo helps nursing staff identify the correct item on the shelf, especially for similar-looking medications.
+
+1. **Inventory → find item → Edit (pencil icon)**
+2. Scroll to the **Photo** section
+3. Upload a JPEG, PNG, or WebP image (max 20 MB)
+4. Click **Save** — the photo is stored in the uploads volume and shown on the item card
 
 ### Adjusting Stock Manually
 
@@ -154,6 +166,8 @@ The dashboard shows a budget vs actual spend widget. To configure budgets:
 - **Valuation** — total stock value at internal and cost prices
 - **Movements** — full adjustment history
 - **Invoices** — invoice line items CSV export
+- **BAS / GST** — Australian quarterly BAS summary (see [GST / BAS Export](#gst--bas-export) below)
+- **Controlled Drug Register** — all dispensing events for controlled/scheduled items, CSV export
 
 All tabs support date ranges and CSV export.
 
@@ -214,6 +228,83 @@ For clinics using Schedule 8 (or S4) drugs:
 - Mark items as **Controlled** when adding/editing them; set the schedule (S4, S8, etc.)
 - When a nurse fulfils a controlled drug, they must enter a **witness name and role**
 - Go to **Reports → Controlled Drug Register** to view or export the full dispensing history (CSV) for regulatory compliance
+
+### Recall Management
+
+When a supplier issues a product recall:
+
+1. **Recalls → New Recall**
+2. Enter the recall title, description, affected batch numbers (comma-separated), and severity level
+3. Optionally enter a regulatory reference (TGA recall number, ARTG, etc.)
+4. Click **Create Recall** — admins are emailed immediately with a severity-coded alert
+
+**Inside the recall detail view:**
+- **Affected batches in stock** — lists every matching batch still on your shelves with current quantity
+- **Dispensed to patients** — every dispensing event matching those batch numbers, with patient name, date, and doctor
+- **Quarantine Affected Stock** — writes off all matching batches in one click and creates adjustment records
+- **Export Patient List (CSV)** — download the full patient impact list for regulatory submission
+- **Close Recall** — marks it as resolved
+
+### GST / BAS Export
+
+**Reports → BAS / GST** generates an Australian BAS summary:
+
+| Field | Source |
+|---|---|
+| Taxable purchases (incl. GST) | Posted supplier invoices in the date range |
+| Input tax credits (G10/G11) | GST component of those invoices |
+| Taxable supplies | Dispensing charges with GST-applicable items |
+| GST collected | GST component of those charges |
+| **Net GST payable** | GST collected − input tax credits |
+
+- Use the **From / To** date pickers to select the BAS quarter
+- Defaults to the current Australian financial year
+- Click **Export CSV** to download for your accountant or BAS agent
+- Monthly breakdown table shows the split for each month in the period
+
+### Outbound Webhooks
+
+Push real-time events to external systems (practice management software, Zapier, custom scripts):
+
+1. **Settings → Webhooks → New Webhook**
+2. Enter the destination URL and select which events to subscribe to
+3. Copy the **signing secret** — it is shown only once; use it in your receiver to verify the signature
+4. Click **Test** to send a ping and confirm the connection
+
+**Verifying signatures (in your receiver):**
+```
+X-SHIT-Signature: sha256=<hmac>
+Compute: HMAC-SHA256(secret, request_body)
+Compare: computed == header value
+```
+
+**Available events:**
+
+| Event | Triggered when |
+|---|---|
+| `stock.low` | Stock hits the reorder threshold (and auto-reorder creates a PO) |
+| `stock.expired` | Nightly write-off runs and finds expired batches |
+| `request.created` | A doctor submits a new stock request |
+| `request.fulfilled` | A nurse fulfils a request |
+| `invoice.posted` | A supplier invoice is posted and stock is updated |
+| `purchase_order.received` | Goods are received against a purchase order |
+| `stocktake.completed` | A stocktake session is completed |
+| `recall.created` | A new recall is logged |
+| `transfer.received` | A stock transfer is received at the destination site |
+
+Failed deliveries are automatically retried with exponential backoff (1 min → 5 min → 30 min → 2 h → 8 h). The **Deliveries** tab shows the history and response codes for each subscription.
+
+### Scheduled Stocktake Configuration
+
+Set up recurring stocktakes so sessions are created automatically:
+
+1. **Settings → Stocktake Schedules → New Schedule**
+2. Set the name, frequency (Weekly / Monthly / Quarterly), and the day within the period
+3. Choose **Full** (all active items) or **Partial** (by category or location)
+4. Add any extra email addresses to notify when a session is created
+5. Click **Save** — the system calculates the next due date and creates the session automatically when that date arrives
+
+Staff receive an email with the session details. They log in and count as normal.
 
 ### Running a Stocktake
 
@@ -290,13 +381,24 @@ Go to **Requests** — new requests from doctors appear at the top, sorted by pr
    - Tick **This is a substitution** if you used a different item, and enter a reason
 4. Click **Complete Fulfilment**
 
-After fulfilling, a green **"Copy to clinical notes"** panel appears:
+After fulfilling, two things appear below the fulfilment receipt:
+
+**Copyable clinical note** — a green panel with:
 ```
 Stock used
 3x Amoxicillin 500mg
 1x Gauze Roll 10cm
 ```
-Click **Copy** to copy it to your clipboard for pasting into your clinical notes system.
+Click **Copy** to paste directly into your clinical notes system.
+
+**🏷️ Print Labels** — opens an A4 PDF sheet of adhesive dispensing labels (Avery L7163 / 99×57mm, 10 per page). Each label contains:
+- Practice name
+- Patient name and reference number
+- Drug name and quantity dispensed
+- Batch number and expiry date
+- Dispensing nurse name and date
+
+Click the button and print from your browser. Labels work with standard adhesive label sheets.
 
 ### Quick Charge (POS screen)
 

@@ -461,6 +461,26 @@ My Account → Security → Enable 2FA. Require this for all users with admin ac
 0 3 * * * find /opt/medinv/backups -name "daily_*.sql.gz" -mtime +30 -delete
 ```
 
+### Backing up file attachments
+
+The `uploads_data` Docker volume contains all file attachments (invoice PDFs, item photos, return documents). Back it up separately from the database:
+
+```bash
+# Backup uploads volume
+docker run --rm \
+  -v medinv_uploads_data:/uploads:ro \
+  -v /opt/medinv/backups:/backup \
+  alpine tar czf /backup/uploads_$(date +%Y%m%d).tar.gz -C / uploads
+
+# Restore uploads volume
+docker run --rm \
+  -v medinv_uploads_data:/uploads \
+  -v /opt/medinv/backups:/backup \
+  alpine tar xzf /backup/uploads_20260101.tar.gz -C /
+```
+
+The backup integrity check (Sunday 04:00) verifies only the database. Uploads are not included in that automated test — run a periodic restore test manually if attachments are critical.
+
 ### Restrict network access
 
 If the server is on the same network as clinic workstations but not the public internet, no additional steps are needed. If it's internet-facing, add a firewall rule to restrict port 3000 to the clinic's IP range.
