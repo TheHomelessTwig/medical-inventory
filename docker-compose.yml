@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: medinv_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-medical_inventory}
+      POSTGRES_USER: ${DB_USER:-medinv}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme_strong_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./backend/src/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql
+    # No host port mapping — backend reaches Postgres via Docker's internal
+    # network using hostname "postgres". Uncomment below for direct DB access:
+    # ports:
+    #   - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-medinv} -d ${DB_NAME:-medical_inventory}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: medinv_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 4000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-medical_inventory}
+      DB_USER: ${DB_USER:-medinv}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme_strong_password}
+      JWT_SECRET: ${JWT_SECRET:-change_this_jwt_secret_minimum_32_chars}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change_this_refresh_secret_min_32}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
+      # CORS_ORIGIN=* allows any device on the LAN to connect via the nginx proxy.
+      # For a fixed clinic IP, set this to http://192.168.x.x:3000 in your .env
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      SESSION_TIMEOUT_MINUTES: ${SESSION_TIMEOUT_MINUTES:-30}
+      MAX_LOGIN_ATTEMPTS: ${MAX_LOGIN_ATTEMPTS:-5}
+      LOCKOUT_MINUTES: ${LOCKOUT_MINUTES:-15}
+    volumes:
+      - ./version.json:/app/version.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Backend is only reachable through the nginx proxy — not exposed externally.
+    # Remove the comment below if you need direct backend access for debugging:
+    # ports:
+    #   - "4000:4000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Empty = use relative URLs (/api/...) so the app works from any device.
+        # nginx proxies /api/* → backend:4000 internally.
+        VITE_API_URL: ""
+    container_name: medinv_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+    driver: local

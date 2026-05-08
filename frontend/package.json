@@ -1,0 +1,48 @@
+{
+  "name": "medical-inventory-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^3.3.4",
+    "@tanstack/react-query": "^5.28.6",
+    "axios": "^1.6.8",
+    "date-fns": "^3.6.0",
+    "lucide-react": "^0.358.0",
+    "papaparse": "^5.4.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hook-form": "^7.51.1",
+    "react-hot-toast": "^2.4.1",
+    "react-router-dom": "^6.22.3",
+    "recharts": "^2.12.3",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/forms": "^0.5.7",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/papaparse": "^5.3.14",
+    "@types/react": "^18.2.73",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "@vitest/coverage-v8": "^4.1.5",
+    "autoprefixer": "^10.4.19",
+    "jsdom": "^29.1.1",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.4.3",
+    "vite": "^5.2.6",
+    "vitest": "^4.1.5"
+  }
+}

@@ -1,0 +1,36 @@
+version: '3.9'
+
+# Development override — hot-reloading for backend, Vite dev server for frontend
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  backend:
+    build:
+      context: ./backend
+      target: builder          # use the builder stage (has devDeps)
+    environment:
+      NODE_ENV: development
+      LOG_QUERIES: "true"
+    volumes:
+      - ./backend/src:/app/src  # live reload
+    command: npm run dev
+    ports:
+      - "4000:4000"
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    environment:
+      VITE_API_URL: http://localhost:4000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
