@@ -62,8 +62,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
             <Stethoscope size={16} className="text-white" />
           </div>
           <div>
-            <div className="text-white font-semibold text-sm leading-none">MedInventory</div>
-            <div className="text-slate-400 text-xs leading-none mt-0.5">Clinic Stock</div>
+            <div className="text-white font-black text-sm leading-none tracking-widest">S.H.I.T.</div>
+            <div className="text-slate-400 text-xs leading-none mt-0.5">Sam's Inventory</div>
           </div>
         </div>
         {onClose && (

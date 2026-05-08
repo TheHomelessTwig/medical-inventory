@@ -22,7 +22,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const location = useLocation();
-  const title = pageTitles[location.pathname] || 'MedInventory';
+  const title = pageTitles[location.pathname] || 'S.H.I.T.';
 
   const { data: lowStockCount } = useQuery({
     queryKey: ['low-stock-count'],

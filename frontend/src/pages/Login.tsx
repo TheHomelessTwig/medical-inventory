@@ -45,8 +45,8 @@ const Login: React.FC = () => {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg shadow-blue-500/30">
             <Stethoscope size={32} className="text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white">MedInventory</h1>
-          <p className="text-slate-400 mt-2">Clinic Inventory Management</p>
+          <h1 className="text-5xl font-black text-white tracking-widest">S.H.I.T.</h1>
+          <p className="text-blue-300 font-medium mt-1 text-sm tracking-wide">Sam's Helpful Inventory Tracker</p>
         </div>
 
         {/* Card */}
