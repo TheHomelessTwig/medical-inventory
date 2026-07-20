@@ -15,7 +15,7 @@
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
     "@tanstack/react-query": "^5.28.6",
-    "axios": "^1.6.8",
+    "axios": "^1.18.0",
     "date-fns": "^3.6.0",
     "lucide-react": "^0.358.0",
     "papaparse": "^5.4.1",
